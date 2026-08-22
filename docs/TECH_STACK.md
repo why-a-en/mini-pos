@@ -1,0 +1,124 @@
+# Tech Stack & Infrastructure
+
+**Status:** Draft v1
+**Last updated:** 2026-08-23
+**Related:** [PRD.md](./PRD.md)
+
+---
+
+## 1. Summary
+
+| Layer | Choice |
+|---|---|
+| Framework | **Next.js** (App Router, TypeScript), hosted on **Vercel**, function region pinned to `sin1` (Singapore) |
+| Database | **Neon Postgres**, provisioned in a Singapore (AP Southeast) region |
+| ORM | **Drizzle** |
+| Auth | **Self-rolled** (email/password, session cookies) — deliberately temporary, see §2 |
+| File storage | **Cloudflare R2** (S3-compatible) |
+| CDN / DNS | **Cloudflare**, sitting in front of the app (free tier) |
+| Live updates | Polling / SWR revalidation for MVP; revisit only if genuinely needed |
+| UI | **Tailwind CSS + shadcn/ui** |
+
+## 2. Why this stack
+
+### Next.js + Vercel
+One codebase for frontend + backend (Server Actions), fast iteration via
+git-based deploys, free tier comfortably covers a small internal tool's
+traffic. Hosting is not a lock-in risk — it's a standard Next.js app,
+portable to another host later with minimal change.
+
+### Neon Postgres (not Supabase)
+Relational data fits this domain (vendors ↔ products ↔ orders ↔ users).
+We initially considered Supabase for its bundled DB+Auth+Storage+Realtime,
+but rejected it: those bundled services wrap Postgres in
+Supabase-specific mechanics (GoTrue JWTs, PostgREST auto-API, RLS
+conventions tied to its auth), which becomes a real migration cost once
+this grows into a **multi-vendor platform** with its own auth/billing/
+onboarding needs. Plain Postgres (Neon) has no such wrapper — same SQL
+runs anywhere, and Neon lets us pick a region close to our actual users.
+
+### Self-rolled auth (not Clerk / Supabase Auth) — deliberately temporary
+We considered Clerk (its Organizations feature maps well onto
+multi-tenant B2B: one org per vendor), but decided to roll our own
+for now instead, with the explicit intent to migrate to a managed
+provider (Clerk or otherwise) once the multi-vendor platform is real
+and auth needs grow (SSO, invites, MFA, etc.).
+
+Kept deliberately minimal and boring, so it's cheap to rip out later:
+- **Password hashing:** argon2.
+- **Sessions, not JWTs:** a `sessions` table (`token_hash`, `user_id`,
+  `expires_at`) checked on each request via an httpOnly, secure,
+  `sameSite=lax` cookie. This is the standard pattern for this kind of
+  build (the one popularized by Lucia's guides) — it allows real
+  revocation/"log out everywhere," unlike stateless JWTs.
+- **Isolated behind one module.** All auth logic (hashing, session
+  creation/validation, login/logout) lives in a single module the rest
+  of the app calls through — never scattered across routes — so
+  swapping in a managed provider later is a contained change, not a
+  rewrite.
+- `users.email` / `users.password_hash` are plain, portable columns —
+  no vendor-specific user ID to migrate away from.
+
+### Cloudflare R2 for storage, Cloudflare as CDN/DNS
+S3-compatible API — an industry standard, trivially portable to AWS S3
+later, never coupled to the app framework. Cloudflare also has strong
+edge presence in Southeast Asia, which matters most for the
+bandwidth-heavy parts of this app (product images, order screenshots) —
+so we get Cloudflare's regional strength where it actually helps,
+without taking on the compatibility friction of running Next.js itself
+on Cloudflare Workers (Node API gaps, edge-only ORM drivers, D1's
+relational limitations vs Postgres).
+
+### Region choice — Myanmar & Thailand users
+The actual latency lever is **region pinning**, not platform choice:
+- Vercel serverless functions default to a US region unless pinned —
+  pin to **Singapore (`sin1`)**, the closest available region to both
+  Myanmar and Thailand.
+- Provision Neon's Postgres instance in a **Singapore region** too, so
+  app server and DB are co-located instead of each hopping
+  cross-region independently.
+- Static assets are already served from Vercel's global edge CDN
+  regardless of function region, so this only affects API/DB
+  round-trips — which is exactly where it matters.
+
+*Known caveat, unrelated to any host choice:* Myanmar's internet has had
+real connectivity/reliability issues (throttling, intermittent
+restrictions) independent of infrastructure provider — worth being
+aware of, not something any CDN fully solves.
+
+## 3. Explicitly rejected / deferred
+
+| Option | Why not (for now) |
+|---|---|
+| **Supabase** (bundled DB+Auth+Storage+Realtime) | Great for a single-tenant MVP, but its bundled services couple app logic to Supabase-specific mechanics — expensive to unwind once this becomes a real multi-vendor platform. |
+| **Full Cloudflare stack** (Workers + D1/Hyperdrive) | Cloudflare Workers' Next.js support (`@opennextjs/cloudflare`) has real rough edges (Node API gaps, edge-only ORM drivers); D1 is less mature than Postgres for relational multi-tenant data. Not worth the complexity at current traffic levels. |
+| **Real-time push (Pusher/WebSockets/Supabase Realtime)** | Buyer's "instant" pending-orders view can be served by simple polling/SWR revalidation at this scale (a few staff, low order volume) — a 3–5s poll is indistinguishable from push here. Revisit only if usage grows enough to need it. |
+| **Clerk / managed auth** | Not rejected, just deferred — self-rolled auth (§2) covers MVP needs with zero added services. Revisit once multi-vendor onboarding needs SSO, invites, or MFA; the plain `email`/`password_hash` schema is designed to make that swap cheap. |
+
+## 4. Multi-tenancy — the decision that matters more than tool choice
+
+Even though the MVP has exactly one vendor (you), the schema is built
+multi-tenant from day one, because retrofitting this later is far more
+painful than designing for it now:
+
+- **Shared schema, `vendor_id` column on every table** (the standard,
+  scalable SaaS pattern — Slack/Notion-style workspace model), rather
+  than schema-per-tenant or database-per-tenant (which becomes
+  operationally painful once there are more than a handful of vendors —
+  migrations run N times).
+- **Postgres Row-Level Security (RLS) policies keyed on `vendor_id`** as
+  defense-in-depth on top of app-level scoping — a native Postgres
+  feature (works on Neon, not Supabase-exclusive). This protects against
+  the classic bug of a query missing its `WHERE vendor_id = ...` clause
+  and leaking one vendor's data to another — cheap insurance now,
+  a real incident later if skipped.
+
+See [DATA_MODEL.md](./DATA_MODEL.md) for the schema this produces.
+
+## 5. Cost expectation
+
+Vercel free tier + Neon free tier + Cloudflare free tier (R2 + CDN/DNS)
+should run this at **$0/month** through MVP and likely well into early
+multi-vendor growth. Self-rolled auth adds no service cost at all — the
+first dollar spent on auth will be whenever we deliberately migrate to
+a managed provider.
