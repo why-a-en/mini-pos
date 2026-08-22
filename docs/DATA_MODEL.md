@@ -86,7 +86,7 @@ erDiagram
 
 | Enum | Values | Used by |
 |---|---|---|
-| `user_role` | `admin`, `cs_agent`, `buyer` | `users.role` |
+| `user_role` | `admin`, `customer_service`, `supplier` | `users.role` |
 | `product_status` | `active`, `archived` | `products.status` |
 | `source_marketplace` | `lazada`, `tiktok_shop`, `other` | `products.source_marketplace` |
 | `order_status` | `pending`, `purchased`, `cancelled` | `orders.status` |
@@ -143,7 +143,7 @@ supports real revocation, unlike a stateless JWT.
 **Index:** `(token_hash)` for fast lookup on every request; `(user_id)` to support "log out everywhere"
 
 ### `products`
-The catalog entry — created once by a CS agent, reused across orders.
+The catalog entry — created once by Customer Service, reused across orders.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -152,7 +152,7 @@ The catalog entry — created once by a CS agent, reused across orders.
 | `name` | `text` NOT NULL | |
 | `description` | `text` NOT NULL | |
 | `source_marketplace` | `source_marketplace` | nullable until known |
-| `source_url` | `text` | nullable — **the highest-leverage field**, see PRD §9.1; lets the buyer skip manual image search entirely when populated |
+| `source_url` | `text` | nullable — **the highest-leverage field**, see PRD §9.1; lets the Supplier skip manual image search entirely when populated |
 | `modifiers` | `jsonb` | shape: `[{"name": "Color", "options": ["Black", "White"]}, {"name": "Size", "options": ["S", "M", "L"]}]`; `[]` if none |
 | `price` | `numeric(12,2)` | nullable for MVP |
 | `status` | `product_status` | default `active` |
@@ -177,7 +177,7 @@ be ordered and a primary image is unambiguous.
 **Index:** `(product_id, sort_order)`
 
 ### `orders`
-A single customer's request, logged by a CS agent against an existing
+A single customer's request, logged by Customer Service against an existing
 product (per the locked MVP decision — no ad-hoc orders yet).
 
 | Column | Type | Notes |
@@ -192,12 +192,12 @@ product (per the locked MVP decision — no ad-hoc orders yet).
 | `screenshot_url` | `text` | nullable — order/chat screenshot, R2 object URL |
 | `notes` | `text` | nullable |
 | `status` | `order_status` NOT NULL | default `pending` |
-| `created_by` | `uuid` FK → `users.id` | the CS agent |
+| `created_by` | `uuid` FK → `users.id` | the Customer Service |
 | `created_at` | `timestamptz` | default `now()` |
 | `purchased_at` | `timestamptz` | set when status → `purchased` |
 
 **Indexes:**
-- `(vendor_id, status, created_at)` — powers the buyer's "Today's Pending
+- `(vendor_id, status, created_at)` — powers the Supplier's "Today's Pending
   Orders" view
 - `(vendor_id, product_id, status)` — powers grouping pending orders by
   product with a running quantity total (PRD §6.3)
@@ -248,7 +248,7 @@ schema:
 
 - Payment/deposit status on `orders`
 - Extended order lifecycle (`received`, `delivered`, `completed`)
-- Multi-buyer claiming (`claimed_by`, `claimed_at` on `orders`)
+- Multi-Supplier claiming (`claimed_by`, `claimed_at` on `orders`)
 - Ad-hoc orders without a `product_id`
 - Normalized modifier tables (`modifier_groups` / `modifier_options`) —
   the `jsonb` shape above covers display + grouping needs; only worth

@@ -92,7 +92,7 @@ aware of, not something any CDN fully solves.
 |---|---|
 | **Supabase** (bundled DB+Auth+Storage+Realtime) | Great for a single-tenant MVP, but its bundled services couple app logic to Supabase-specific mechanics — expensive to unwind once this becomes a real multi-vendor platform. |
 | **Full Cloudflare stack** (Workers + D1/Hyperdrive) | Cloudflare Workers' Next.js support (`@opennextjs/cloudflare`) has real rough edges (Node API gaps, edge-only ORM drivers); D1 is less mature than Postgres for relational multi-tenant data. Not worth the complexity at current traffic levels. |
-| **Real-time push (Pusher/WebSockets/Supabase Realtime)** | Buyer's "instant" pending-orders view can be served by simple polling/SWR revalidation at this scale (a few staff, low order volume) — a 3–5s poll is indistinguishable from push here. Revisit only if usage grows enough to need it. |
+| **Real-time push (Pusher/WebSockets/Supabase Realtime)** | Supplier's "instant" pending-orders view can be served by simple polling/SWR revalidation at this scale (a few staff, low order volume) — a 3–5s poll is indistinguishable from push here. Revisit only if usage grows enough to need it. |
 | **Clerk / managed auth** | Not rejected, just deferred — self-rolled auth (§2) covers MVP needs with zero added services. Revisit once multi-vendor onboarding needs SSO, invites, or MFA; the plain `email`/`password_hash` schema is designed to make that swap cheap. |
 
 ## 4. Multi-tenancy — the decision that matters more than tool choice
@@ -126,8 +126,8 @@ a managed provider.
 ## 6. Mobile-first, and robust on real-world phone browsers
 
 Hard requirement, not a nice-to-have — see
-[PRD.md §8](./PRD.md#8-non-functional-requirements). CS agents and the
-buyer use this primarily on phones, realistically mid-range Android
+[PRD.md §8](./PRD.md#8-non-functional-requirements). Customer Service and the
+Supplier use this primarily on phones, realistically mid-range Android
 devices on Myanmar/Thailand mobile networks — not flagship phones on
 fast wifi. That shapes concrete build decisions, not just a CSS
 media-query afterthought:
