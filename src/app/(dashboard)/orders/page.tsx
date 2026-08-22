@@ -2,26 +2,59 @@ import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { withCurrentVendor } from "@/lib/tenancy";
 import { orders, products } from "@/db/schema";
-import { cancelOrderAction, markPurchasedAction } from "./actions";
+import type { PendingOrderRow } from "./pending-orders-types";
+import { PendingOrdersVariantA } from "./pending-orders-variant-a";
+import { PendingOrdersVariantB } from "./pending-orders-variant-b";
+import { PendingOrdersVariantC } from "./pending-orders-variant-c";
+import { PrototypeSwitcher } from "./prototype-switcher";
 
-// The Supplier's core screen (PRD §6.3): every pending order, grouped
-// visually by product name so repeat items are easy to spot, with a
-// direct link to the marketplace listing when Customer Service captured one.
-export default async function OrdersPage() {
-  const pendingOrders = await withCurrentVendor(({ vendorId, tx }) =>
+// PROTOTYPE (/prototype UI.md, sub-shape A): three variants of the
+// Supplier's core screen (PRD §6.3) live on this real route, switchable via
+// ?variant=, gated out of production builds. Data fetching/auth below is
+// untouched real code; only the rendered subtree swaps per variant.
+// See scripts/prototype-seed.mts for demo data and the "prototype/
+// supplier-pending-orders" branch for the full variant set once this is
+// folded into a single decision.
+const VARIANTS = [
+  { key: "A", label: "Grouped by product" },
+  { key: "B", label: "Flat, oldest-first" },
+  { key: "C", label: "Shopping-list, select+confirm" },
+] as const;
+
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ variant?: string }>;
+}) {
+  const { variant: rawVariant } = await searchParams;
+  const variant = VARIANTS.some((v) => v.key === rawVariant) ? rawVariant! : "A";
+  const isPrototype = process.env.NODE_ENV !== "production";
+
+  const rawPendingOrders = await withCurrentVendor(({ vendorId, tx }) =>
     tx
       .select({
         id: orders.id,
-        customerName: orders.customerName,
-        quantity: orders.quantity,
+        productId: orders.productId,
         productName: products.name,
         sourceUrl: products.sourceUrl,
+        customerName: orders.customerName,
+        customerContact: orders.customerContact,
+        selectedModifiers: orders.selectedModifiers,
+        quantity: orders.quantity,
+        notes: orders.notes,
+        createdAt: orders.createdAt,
       })
       .from(orders)
       .innerJoin(products, eq(orders.productId, products.id))
       .where(and(eq(orders.vendorId, vendorId), eq(orders.status, "pending")))
       .orderBy(asc(orders.createdAt)),
   );
+  // selectedModifiers is stored as jsonb (untyped); the shape is documented
+  // in docs/DATA_MODEL.md as Record<string, string> ({"Color": "Black"}).
+  const pendingOrders: PendingOrderRow[] = rawPendingOrders.map((row) => ({
+    ...row,
+    selectedModifiers: (row.selectedModifiers ?? {}) as Record<string, string>,
+  }));
 
   return (
     <div className="space-y-4">
@@ -40,48 +73,15 @@ export default async function OrdersPage() {
           No pending orders. New orders Customer Service logs will show up here.
         </p>
       ) : (
-        <ul className="space-y-3">
-          {pendingOrders.map((order) => (
-            <li key={order.id} className="rounded-lg border border-neutral-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{order.productName}</p>
-                  <p className="text-sm text-neutral-500">
-                    {order.customerName} · qty {order.quantity}
-                  </p>
-                  {order.sourceUrl && (
-                    <a
-                      href={order.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-blue-600 underline"
-                    >
-                      Open listing
-                    </a>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                  <form action={markPurchasedAction.bind(null, order.id)}>
-                    <button
-                      type="submit"
-                      className="min-h-11 w-full rounded-md bg-green-600 px-3 text-sm font-medium text-white"
-                    >
-                      Mark Purchased
-                    </button>
-                  </form>
-                  <form action={cancelOrderAction.bind(null, order.id)}>
-                    <button
-                      type="submit"
-                      className="min-h-11 w-full rounded-md border border-neutral-300 px-3 text-sm font-medium"
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          {variant === "A" && <PendingOrdersVariantA rows={pendingOrders} />}
+          {variant === "B" && <PendingOrdersVariantB rows={pendingOrders} />}
+          {variant === "C" && <PendingOrdersVariantC rows={pendingOrders} />}
+        </>
+      )}
+
+      {isPrototype && (
+        <PrototypeSwitcher variants={VARIANTS.map((v) => ({ key: v.key, label: v.label }))} current={variant} />
       )}
     </div>
   );
