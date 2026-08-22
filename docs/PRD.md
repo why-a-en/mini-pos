@@ -185,8 +185,20 @@ Just enough for login + attribution (who created what).
 
 ## 8. Non-Functional Requirements
 
-- **Mobile-friendly**: both CS agents and the buyer are likely to use
-  this from a phone as much as a desktop.
+- **Mobile-first, not just mobile-friendly.** This is a hard requirement,
+  not a nice-to-have: CS agents and the buyer will use this primarily
+  on phones, not desktop. Every screen is designed for the smallest
+  target size first, then progressively enhanced for larger viewports —
+  not designed for desktop and squeezed to fit. Must render correctly
+  across the full range of phone sizes, from small (~320–375px wide) to
+  large/phablet.
+- **Performant and robust on real-world phone browsers.** Fast and
+  reliable on the actual devices and networks in use (mid-range Android
+  devices are the realistic baseline, not flagship phones), on Chrome
+  Android, Safari iOS, and Samsung Internet — and tolerant of the
+  variable/slow mobile network conditions common in Myanmar and
+  Thailand (see [TECH_STACK.md](./TECH_STACK.md)): small JS payloads,
+  resilient image loading, no hard failures on a flaky connection.
 - **Fast product/order entry**: this replaces a chat message, so it must
   be at least as fast as typing a message — minimize required fields,
   support pasting an image directly.

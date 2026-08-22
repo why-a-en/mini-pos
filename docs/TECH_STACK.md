@@ -122,3 +122,41 @@ should run this at **$0/month** through MVP and likely well into early
 multi-vendor growth. Self-rolled auth adds no service cost at all — the
 first dollar spent on auth will be whenever we deliberately migrate to
 a managed provider.
+
+## 6. Mobile-first, and robust on real-world phone browsers
+
+Hard requirement, not a nice-to-have — see
+[PRD.md §8](./PRD.md#8-non-functional-requirements). CS agents and the
+buyer use this primarily on phones, realistically mid-range Android
+devices on Myanmar/Thailand mobile networks — not flagship phones on
+fast wifi. That shapes concrete build decisions, not just a CSS
+media-query afterthought:
+
+- **Design mobile-first, literally.** Build each screen for the
+  smallest target width (~320–375px) first with Tailwind's default
+  (unprefixed) styles, then layer on `sm:`/`md:`/`lg:` overrides for
+  larger viewports — never the reverse. A layout that was designed for
+  desktop and then "made responsive" is exactly what this rules out.
+- **Keep client-side JS small.** Lean on React Server Components for
+  anything that doesn't need interactivity; keep client components
+  (forms, the mark-purchased action, image pickers) as small, isolated
+  islands. Smaller JS payload matters more on slow/variable mobile
+  networks than on desktop broadband.
+- **Images are the heaviest part of this app** (product photos, order
+  screenshots) — use `next/image` for automatic resizing/lazy-loading,
+  compress/resize on upload before it lands in R2, and serve thumbnails
+  in list views rather than full-resolution originals.
+- **Network resilience over hard failure.** Assume requests can be slow
+  or drop mid-flight: show optimistic/loading states rather than blank
+  screens, and make image uploads retry-friendly instead of failing the
+  whole form on one flaky request.
+- **Respect device chrome.** Any fixed-position UI (e.g. a bottom action
+  bar) uses `env(safe-area-inset-*)` padding so it doesn't collide with
+  iOS/Android gesture bars or the browser's own bottom nav.
+- **Target browser matrix:** Chrome for Android, Safari iOS, and Samsung
+  Internet — the realistic spread for this user base. Avoid
+  bleeding-edge CSS/JS features without checking support across all
+  three rather than just testing in one desktop browser's dev tools.
+- **Test on real, mid-range devices** before calling something done —
+  an emulator or a high-end iPhone hides exactly the performance
+  problems this requirement exists to catch.
