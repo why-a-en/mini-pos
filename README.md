@@ -13,12 +13,22 @@ what this replaces and why.
 ## Getting started
 
 ```bash
-cp .env.example .env.local   # fill in DATABASE_URL, R2 creds, AUTH_SECRET
 npm install
+neon link                    # once, links this repo to the Neon project
+neon checkout main           # pulls DATABASE_URL / DATABASE_URL_UNPOOLED into .env.local
 npm run db:generate          # generate SQL from src/db/schema.ts
-npm run db:migrate           # apply it to the DATABASE_URL above
+npm run db:migrate           # apply it, via the owner role (DATABASE_URL_UNPOOLED)
 npm run dev
 ```
+
+The pulled `DATABASE_URL` from `neon checkout` is the **owner** role —
+fine for `db:migrate`, but the app itself must run against the
+**`app_user`** role instead (see
+[`docs/TECH_STACK.md`](./docs/TECH_STACK.md#neon-role-setup-app_user-vs-the-owner-role)
+for why, and the exact `CREATE ROLE` to run once per database). Swap
+`DATABASE_URL` in `.env.local` to `app_user`'s connection string before
+running `npm run dev`. Also fill in the R2 and `AUTH_SECRET` values from
+`.env.example`.
 
 Open [http://localhost:3000](http://localhost:3000).
 

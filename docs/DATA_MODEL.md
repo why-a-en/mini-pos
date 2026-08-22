@@ -227,6 +227,12 @@ alter table products enable row level security;
 alter table product_images enable row level security;
 alter table orders enable row level security;
 
+-- FORCE, not just ENABLE — see the gotcha below. Without it, this whole
+-- section does nothing.
+alter table products force row level security;
+alter table product_images force row level security;
+alter table orders force row level security;
+
 create policy tenant_isolation on products
   using (vendor_id = current_setting('app.vendor_id')::uuid);
 
@@ -240,6 +246,27 @@ create policy tenant_isolation on orders
 The app sets `app.vendor_id` at the start of each request/transaction
 by resolving the session cookie → `sessions.user_id` → `users.vendor_id`,
 before any query runs.
+
+### Two gotchas that silently defeat all of this if missed
+
+Both were caught by hand — actually inserting cross-vendor fixtures and
+confirming a scoped query can't see the other vendor's row — not by reading
+the SQL and assuming it works. Worth re-testing this way after any change
+near auth, roles, or migrations.
+
+1. **`ENABLE ROW LEVEL SECURITY` alone doesn't apply to the table owner.**
+   Postgres exempts a table's owner from its own RLS policies by default.
+   Our app must run as **`FORCE ROW LEVEL SECURITY`** too, or connect as a
+   role that doesn't own the tables — otherwise every policy above is a
+   no-op for exactly the role that matters.
+2. **Roles created via the Neon console, CLI, or API get `BYPASSRLS`.**
+   They're granted `neon_superuser` membership, which bypasses RLS
+   entirely — `FORCE` doesn't help, `BYPASSRLS` wins regardless. The
+   app's Postgres role (`app_user`) must be created with **plain SQL**
+   (`CREATE ROLE app_user LOGIN PASSWORD '...'`, then explicit `GRANT`s —
+   never through Neon's role-management surface), which does *not* grant
+   `neon_superuser`. See
+   [TECH_STACK.md](./TECH_STACK.md#neon-role-setup-app_user-vs-the-owner-role).
 
 ## 6. Deferred (not in MVP schema)
 

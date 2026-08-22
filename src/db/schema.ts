@@ -2,6 +2,7 @@
 import {
   pgTable,
   pgEnum,
+  pgPolicy,
   uuid,
   text,
   integer,
@@ -11,6 +12,22 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+// RLS defense-in-depth (docs/DATA_MODEL.md §5): every tenant-scoped table
+// gets this same policy. withCheck is intentionally omitted — Postgres
+// falls back to using USING for INSERT/UPDATE checks too when WITH CHECK
+// isn't given, so this one expression covers reads and writes.
+//
+// Every table using this also needs `ALTER TABLE ... FORCE ROW LEVEL
+// SECURITY` added by hand to its migration — Drizzle's .enableRLS() only
+// emits plain ENABLE, and Postgres exempts a table's *owner* from RLS
+// unless FORCE is set too. Our app connects as the owning role, so
+// without FORCE these policies would silently do nothing.
+const tenantIsolationPolicy = () =>
+  pgPolicy("tenant_isolation", {
+    using: sql`vendor_id = current_setting('app.vendor_id')::uuid`,
+  });
 
 // --- Enums ---------------------------------------------------------------
 
@@ -108,8 +125,9 @@ export const products = pgTable(
   (table) => [
     index("products_vendor_status_idx").on(table.vendorId, table.status),
     index("products_vendor_name_idx").on(table.vendorId, table.name),
+    tenantIsolationPolicy(),
   ],
-);
+).enableRLS();
 
 // One-to-many, separate table (rather than an array column) so images can be
 // ordered and a primary image is unambiguous.
@@ -127,8 +145,11 @@ export const productImages = pgTable(
     url: text("url").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
   },
-  (table) => [index("product_images_product_sort_idx").on(table.productId, table.sortOrder)],
-);
+  (table) => [
+    index("product_images_product_sort_idx").on(table.productId, table.sortOrder),
+    tenantIsolationPolicy(),
+  ],
+).enableRLS();
 
 // A single customer's request, logged by Customer Service against an existing
 // product (per the locked MVP decision — no ad-hoc orders yet).
@@ -162,5 +183,6 @@ export const orders = pgTable(
     index("orders_vendor_status_created_idx").on(table.vendorId, table.status, table.createdAt),
     // Powers grouping pending orders by product with a running quantity total.
     index("orders_vendor_product_status_idx").on(table.vendorId, table.productId, table.status),
+    tenantIsolationPolicy(),
   ],
-);
+).enableRLS();

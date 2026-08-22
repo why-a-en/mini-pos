@@ -115,6 +115,38 @@ painful than designing for it now:
 
 See [DATA_MODEL.md](./DATA_MODEL.md) for the schema this produces.
 
+### Neon role setup: `app_user` vs. the owner role
+
+The app **does not connect as `neondb_owner`**. Two Postgres roles exist
+on the Neon project:
+
+| Role | Used for | Created via |
+|---|---|---|
+| `neondb_owner` | Schema migrations only (`DATABASE_URL_UNPOOLED`) | Neon (default project owner) |
+| `app_user` | All app runtime queries (`DATABASE_URL`, pooled) | **Plain SQL**, by hand |
+
+This split exists because of a real gotcha, caught by actually testing
+cross-vendor isolation rather than assuming the RLS SQL worked: **any
+role created through Neon's console, CLI, or API is granted
+`neon_superuser` membership, which includes `BYPASSRLS`** — it skips
+every RLS policy unconditionally, regardless of `FORCE ROW LEVEL
+SECURITY`. `neondb_owner` has it too (it's the default project role).
+
+`app_user` was created with plain SQL instead, which Neon does *not*
+upgrade to `neon_superuser`:
+
+```sql
+create role app_user with login password '...';
+grant usage on schema public to app_user;
+grant select, insert, update, delete on all tables in schema public to app_user;
+```
+
+If this project's database is ever recreated, or a new environment is
+provisioned, **recreate `app_user` the same way — never via `neon roles
+create` or the Neon console** — and re-verify with a real cross-vendor
+test (insert two vendors' data, confirm a session scoped to one can't
+see the other's), not just by checking the policy SQL ran without error.
+
 ## 5. Cost expectation
 
 Vercel free tier + Neon free tier + Cloudflare free tier (R2 + CDN/DNS)
