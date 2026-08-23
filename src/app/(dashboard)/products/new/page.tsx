@@ -1,6 +1,9 @@
 import { Field, fieldInputClass } from "@/components/form-field";
 import { createProductAction } from "../actions";
 
+// Core fields only — Modifiers are attached on the product's own page
+// right after this (docs/PRD.md §6.1), so "create a product" is really a
+// short flow: this form, then straight into attaching/creating modifiers.
 export default function NewProductPage() {
   return (
     <div className="mx-auto max-w-md space-y-4">
@@ -23,7 +26,7 @@ export default function NewProductPage() {
         <Field label="Source URL (optional, but the Supplier will thank you)">
           <input name="sourceUrl" type="url" placeholder="https://…" className={fieldInputClass} />
         </Field>
-        <Field label="Price (optional)">
+        <Field label="Price in MMK (optional)">
           <input name="price" type="number" step="0.01" min="0" className={fieldInputClass} />
         </Field>
         {/*
@@ -36,7 +39,7 @@ export default function NewProductPage() {
           type="submit"
           className="min-h-11 w-full rounded-md bg-neutral-900 px-3 text-base font-medium text-white"
         >
-          Save product
+          Save and continue
         </button>
       </form>
     </div>

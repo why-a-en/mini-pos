@@ -34,8 +34,12 @@ export function getPublicUrl(key: string): string {
 }
 
 /** Namespaced, collision-resistant object key for an uploaded image. */
-export function buildImageKey(vendorId: string, kind: "product" | "order", filename: string): string {
+export function buildImageKey(
+  organizationId: string,
+  kind: "product" | "order",
+  filename: string,
+): string {
   const ext = filename.split(".").pop() ?? "jpg";
   const random = crypto.randomUUID();
-  return `${vendorId}/${kind}/${random}.${ext}`;
+  return `${organizationId}/${kind}/${random}.${ext}`;
 }

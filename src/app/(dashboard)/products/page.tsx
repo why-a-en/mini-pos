@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
-import { withCurrentVendor } from "@/lib/tenancy";
+import { withCurrentOrganization } from "@/lib/tenancy";
 import { products } from "@/db/schema";
 
 export default async function ProductsPage() {
-  const catalog = await withCurrentVendor(({ vendorId, tx }) =>
+  const catalog = await withCurrentOrganization(({ organizationId, tx }) =>
     tx
       .select({
         id: products.id,
@@ -13,7 +13,7 @@ export default async function ProductsPage() {
         status: products.status,
       })
       .from(products)
-      .where(eq(products.vendorId, vendorId))
+      .where(eq(products.organizationId, organizationId))
       .orderBy(asc(products.name)),
   );
 

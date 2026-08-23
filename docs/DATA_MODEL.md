@@ -1,28 +1,38 @@
 # Data Model
 
-**Status:** Draft v1
+**Status:** Draft v2
 **Last updated:** 2026-08-23
-**Related:** [PRD.md](./PRD.md), [TECH_STACK.md](./TECH_STACK.md)
+**Related:** [PRD.md](./PRD.md), [TECH_STACK.md](./TECH_STACK.md), [CONTEXT.md](./CONTEXT.md), [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md)
 
-Multi-tenant from day one: every table carries a `vendor_id`, even
-though the MVP runs with a single vendor. See
+Multi-tenant from day one: every tenant-scoped table carries an
+`organization_id`. See
 [TECH_STACK.md §4](./TECH_STACK.md#4-multi-tenancy--the-decision-that-matters-more-than-tool-choice)
-for why.
+for why, and §5 below for how it's actually enforced (it's not just the
+column).
 
 ## 1. ER overview
 
 ```mermaid
 erDiagram
-    VENDORS ||--o{ USERS : employs
-    VENDORS ||--o{ PRODUCTS : owns
-    VENDORS ||--o{ ORDERS : owns
+    ORGANIZATIONS ||--o{ USERS : employs
+    ORGANIZATIONS ||--o{ CUSTOMERS : has
+    ORGANIZATIONS ||--o{ PRODUCTS : owns
+    ORGANIZATIONS ||--o{ MODIFIERS : owns
+    ORGANIZATIONS ||--o{ ORDERS : owns
+    USERS ||--o{ SESSIONS : has
     USERS ||--o{ PRODUCTS : creates
     USERS ||--o{ ORDERS : creates
-    USERS ||--o{ SESSIONS : has
+    CUSTOMERS ||--o{ ORDERS : places
     PRODUCTS ||--o{ PRODUCT_IMAGES : has
-    PRODUCTS ||--o{ ORDERS : "ordered as"
+    PRODUCTS ||--o{ PRODUCT_MODIFIER_OPTIONS : offers
+    MODIFIERS ||--o{ MODIFIER_OPTIONS : has
+    MODIFIER_OPTIONS ||--o{ PRODUCT_MODIFIER_OPTIONS : "offered on"
+    ORDERS ||--o{ ORDER_ITEMS : contains
+    PRODUCTS ||--o{ ORDER_ITEMS : "ordered as"
+    ORDER_ITEMS ||--o{ ORDER_ITEM_MODIFIERS : has
+    MODIFIER_OPTIONS ||--o{ ORDER_ITEM_MODIFIERS : "selected as"
 
-    VENDORS {
+    ORGANIZATIONS {
         uuid id PK
         text name
         text status
@@ -30,7 +40,7 @@ erDiagram
     }
     USERS {
         uuid id PK
-        uuid vendor_id FK
+        uuid organization_id FK
         text name
         text email UK
         text password_hash
@@ -44,14 +54,20 @@ erDiagram
         timestamptz expires_at
         timestamptz created_at
     }
+    CUSTOMERS {
+        uuid id PK
+        uuid organization_id FK
+        text name
+        text contact
+        timestamptz created_at
+    }
     PRODUCTS {
         uuid id PK
-        uuid vendor_id FK
+        uuid organization_id FK
         text name
         text description
         text source_marketplace
         text source_url
-        jsonb modifiers
         numeric price
         text status
         uuid created_by FK
@@ -60,25 +76,58 @@ erDiagram
     }
     PRODUCT_IMAGES {
         uuid id PK
-        uuid vendor_id FK
+        uuid organization_id FK
         uuid product_id FK
         text url
         int sort_order
     }
+    MODIFIERS {
+        uuid id PK
+        uuid organization_id FK
+        text name
+        timestamptz created_at
+    }
+    MODIFIER_OPTIONS {
+        uuid id PK
+        uuid organization_id FK
+        uuid modifier_id FK
+        text value
+        int sort_order
+    }
+    PRODUCT_MODIFIER_OPTIONS {
+        uuid id PK
+        uuid organization_id FK
+        uuid product_id FK
+        uuid modifier_option_id FK
+    }
     ORDERS {
         uuid id PK
-        uuid vendor_id FK
-        uuid product_id FK
-        text customer_name
-        text customer_contact
-        jsonb selected_modifiers
-        int quantity
+        uuid organization_id FK
+        uuid customer_id FK
         text screenshot_url
         text notes
-        text status
         uuid created_by FK
         timestamptz created_at
+    }
+    ORDER_ITEMS {
+        uuid id PK
+        uuid organization_id FK
+        uuid order_id FK
+        uuid product_id FK
+        int quantity
+        text status
+        text cancellation_reason
         timestamptz purchased_at
+        timestamptz received_at
+        timestamptz packed_at
+        timestamptz completed_at
+        timestamptz created_at
+    }
+    ORDER_ITEM_MODIFIERS {
+        uuid id PK
+        uuid organization_id FK
+        uuid order_item_id FK
+        uuid modifier_option_id FK
     }
 ```
 
@@ -86,197 +135,257 @@ erDiagram
 
 | Enum | Values | Used by |
 |---|---|---|
-| `user_role` | `admin`, `customer_service`, `supplier` | `users.role` |
+| `organization_status` | `active`, `suspended` | `organizations.status` |
+| `user_role` | `customer_service`, `supplier` | `users.role` |
 | `product_status` | `active`, `archived` | `products.status` |
 | `source_marketplace` | `lazada`, `tiktok_shop`, `other` | `products.source_marketplace` |
-| `order_status` | `pending`, `purchased`, `cancelled` | `orders.status` |
-| `vendor_status` | `active`, `suspended` | `vendors.status` |
+| `order_item_status` | `pending`, `purchased`, `received`, `packed`, `completed`, `cancelled` | `order_items.status` |
 
-MVP note: since it's genuinely one team wearing multiple hats right now
-(per PRD §4), all real users can simply be seeded with `role = admin`
-until there's an actual reason to restrict permissions by role — the
-column exists so that flip is just a data change, not a schema change.
+No `admin` role — PRD §4 deliberately has no in-app account management
+for MVP; new users are created by running a script directly against the
+database.
 
 ## 3. Tables
 
-### `vendors`
-The tenant. One row per business using the platform (just one for now).
+### `organizations`
+The tenant. One row per business using the platform.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
 | `name` | `text` | |
-| `status` | `vendor_status` | default `active` |
+| `status` | `organization_status` | default `active` |
 | `created_at` | `timestamptz` | default `now()` |
 
 ### `users`
-Staff accounts. Auth is self-rolled for now (see
-[TECH_STACK.md §2](./TECH_STACK.md#self-rolled-auth-not-clerk--supabase-auth--deliberately-temporary))
-— deliberately plain, portable columns so migrating to a managed
-provider later is a data mapping, not a schema rewrite.
+Staff accounts. Auth is self-rolled (see
+[TECH_STACK.md §2](./TECH_STACK.md#self-rolled-auth-not-clerk--supabase-auth--deliberately-temporary)).
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK → `vendors.id` | |
+| `organization_id` | `uuid` FK → `organizations.id` | |
 | `name` | `text` | |
 | `email` | `text` UNIQUE | login identifier |
-| `password_hash` | `text` | argon2 hash; never store/log the raw password |
-| `role` | `user_role` | default `admin` for MVP, see note above |
+| `password_hash` | `text` | argon2 hash |
+| `role` | `user_role` | `customer_service` or `supplier` |
 | `created_at` | `timestamptz` | default `now()` |
 
-**Index:** `(vendor_id)`
+**Index:** `(organization_id)`
 
 ### `sessions`
-Backs the self-rolled auth's session cookie. A row per active login;
-deleting a row (or letting it expire) logs that session out —
-supports real revocation, unlike a stateless JWT.
+Backs the session cookie. See TECH_STACK.md §2 for the design.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
 | `user_id` | `uuid` FK → `users.id` | `ON DELETE CASCADE` |
-| `token_hash` | `text` UNIQUE | hash of the random token stored in the session cookie; never store the raw token |
-| `expires_at` | `timestamptz` NOT NULL | e.g. 30 days from creation; extend on activity if desired |
+| `token_hash` | `text` UNIQUE | |
+| `expires_at` | `timestamptz` NOT NULL | |
 | `created_at` | `timestamptz` | default `now()` |
 
-**Index:** `(token_hash)` for fast lookup on every request; `(user_id)` to support "log out everywhere"
+**Indexes:** `(token_hash)`, `(user_id)`
 
-### `products`
-The catalog entry — created once by Customer Service, reused across orders.
+### `customers`
+A real, searchable entity (PRD §5.3) — not free text on the order.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK → `vendors.id` | |
+| `organization_id` | `uuid` FK → `organizations.id` | |
+| `name` | `text` NOT NULL | |
+| `contact` | `text` | phone, social handle, etc. |
+| `created_at` | `timestamptz` | default `now()` |
+
+**Index:** `(organization_id, name)` — powers search-or-create while
+logging an order
+
+### `products`
+The catalog entry.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK → `organizations.id` | |
 | `name` | `text` NOT NULL | |
 | `description` | `text` NOT NULL | |
 | `source_marketplace` | `source_marketplace` | nullable until known |
-| `source_url` | `text` | nullable — **the highest-leverage field**, see PRD §9.1; lets the Supplier skip manual image search entirely when populated |
-| `modifiers` | `jsonb` | shape: `[{"name": "Color", "options": ["Black", "White"]}, {"name": "Size", "options": ["S", "M", "L"]}]`; `[]` if none |
-| `price` | `numeric(12,2)` | nullable for MVP |
+| `source_url` | `text` | nullable — the highest-leverage field, PRD §9.1 |
+| `price` | `numeric(12,2)` | nullable; MMK, customer-facing (PRD §5.1) |
 | `status` | `product_status` | default `active` |
 | `created_by` | `uuid` FK → `users.id` | |
-| `created_at` | `timestamptz` | default `now()` |
-| `updated_at` | `timestamptz` | updated on edit |
+| `created_at` / `updated_at` | `timestamptz` | |
 
-**Indexes:** `(vendor_id, status)`, `(vendor_id, name)` for catalog search
+**Indexes:** `(organization_id, status)`, `(organization_id, name)`
+
+Note the `modifiers` JSONB column from the previous schema draft is
+**gone** — modifiers are now relational (see below).
 
 ### `product_images`
-One-to-many, separate table (rather than an array column) so images can
-be ordered and a primary image is unambiguous.
+One-to-many, ordered.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK → `vendors.id` | denormalized — see §4 |
+| `organization_id` | `uuid` FK | denormalized — see §5 |
 | `product_id` | `uuid` FK → `products.id` | `ON DELETE CASCADE` |
 | `url` | `text` NOT NULL | R2 object URL |
 | `sort_order` | `int` | default `0`; index 0 = primary/thumbnail |
 
 **Index:** `(product_id, sort_order)`
 
-### `orders`
-A single customer's request, logged by Customer Service against an existing
-product (per the locked MVP decision — no ad-hoc orders yet).
+### `modifiers`
+An Organization-wide, reusable attribute type (PRD §5.2) — e.g. "Color".
+Created inline while creating/editing a Product.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK → `vendors.id` | denormalized — see §4 |
-| `product_id` | `uuid` FK → `products.id` NOT NULL | |
-| `customer_name` | `text` NOT NULL | free text — chat name, handle, etc. |
-| `customer_contact` | `text` | nullable — phone, social handle |
-| `selected_modifiers` | `jsonb` | shape: `{"Color": "Black", "Size": "M"}` |
-| `quantity` | `int` NOT NULL | default `1` |
-| `screenshot_url` | `text` | nullable — order/chat screenshot, R2 object URL |
+| `organization_id` | `uuid` FK | |
+| `name` | `text` NOT NULL | e.g. `"Color"` |
+| `created_at` | `timestamptz` | |
+
+**Index:** UNIQUE `(organization_id, name)` — prevents creating "Color"
+twice by accident from two different inline-creation flows
+
+### `modifier_options`
+One value within a Modifier — e.g. "Black" within "Color". The global
+list; a Product picks a subset (see `product_modifier_options`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK | denormalized |
+| `modifier_id` | `uuid` FK → `modifiers.id` | `ON DELETE CASCADE` |
+| `value` | `text` NOT NULL | e.g. `"Black"` |
+| `sort_order` | `int` | default `0` |
+
+**Index:** UNIQUE `(modifier_id, value)`
+
+### `product_modifier_options`
+Join table: which of a Modifier's global Options actually apply to a
+given Product. (Which *Modifiers* a Product uses is derivable by joining
+through this table — no separate `product_modifiers` table needed.)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK | denormalized |
+| `product_id` | `uuid` FK → `products.id` | `ON DELETE CASCADE` |
+| `modifier_option_id` | `uuid` FK → `modifier_options.id` | `ON DELETE CASCADE` |
+
+**Index:** UNIQUE `(product_id, modifier_option_id)`
+
+### `orders`
+A Customer's request (PRD §5.4) — a **header only**. No status; see
+`order_items`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK | |
+| `customer_id` | `uuid` FK → `customers.id` NOT NULL | |
+| `screenshot_url` | `text` | nullable — R2 object URL |
 | `notes` | `text` | nullable |
-| `status` | `order_status` NOT NULL | default `pending` |
-| `created_by` | `uuid` FK → `users.id` | the Customer Service |
-| `created_at` | `timestamptz` | default `now()` |
-| `purchased_at` | `timestamptz` | set when status → `purchased` |
+| `created_by` | `uuid` FK → `users.id` | the Customer Service who logged it |
+| `created_at` | `timestamptz` | |
+
+**Indexes:** `(organization_id, customer_id)`, `(organization_id, created_at)`
+
+### `order_items`
+One line of an Order (PRD §5.5) — the unit the Supplier's Purchase Queue
+and Customer Service's Packing Queue actually operate on. **Status lives
+here, not on `orders`** — see
+[ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK | denormalized |
+| `order_id` | `uuid` FK → `orders.id` NOT NULL | `ON DELETE CASCADE` |
+| `product_id` | `uuid` FK → `products.id` NOT NULL | |
+| `quantity` | `int` NOT NULL | default `1` |
+| `status` | `order_item_status` NOT NULL | default `pending` |
+| `cancellation_reason` | `text` | nullable, set when status → `cancelled` |
+| `purchased_at` / `received_at` / `packed_at` / `completed_at` | `timestamptz` | nullable, set on each transition |
+| `created_at` | `timestamptz` | |
 
 **Indexes:**
-- `(vendor_id, status, created_at)` — powers the Supplier's "Today's Pending
-  Orders" view
-- `(vendor_id, product_id, status)` — powers grouping pending orders by
-  product with a running quantity total (PRD §6.3)
+- `(organization_id, product_id, status)` — powers the Purchase Queue:
+  group pending items by product across every order/customer
+- `(organization_id, status, created_at)` — powers the Packing Queue and
+  general order-log filtering
+- `(organization_id, order_id)` — look up an order's items
 
-## 4. Why `vendor_id` is denormalized onto every table
+### `order_item_modifiers`
+Join table: which Modifier Option(s) were selected for this line — e.g.
+Color=Black *and* Size=M on the same item.
 
-`orders.vendor_id` and `product_images.vendor_id` are technically
-derivable via `product_id` → `products.vendor_id`. They're stored
-directly anyway because:
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK | denormalized |
+| `order_item_id` | `uuid` FK → `order_items.id` | `ON DELETE CASCADE` |
+| `modifier_option_id` | `uuid` FK → `modifier_options.id` | |
 
-1. **RLS policies stay simple and fast** — every policy is
-   `vendor_id = current_setting('app.vendor_id')::uuid` with no join
-   required, on every table uniformly.
-2. **A single missed join can't leak data.** If a query on `orders`
-   ever forgot to join through `products` to check tenant ownership,
-   a direct column means the RLS policy still catches it.
+**Index:** UNIQUE `(order_item_id, modifier_option_id)`
 
-## 5. Row-Level Security (defense-in-depth)
+## 4. Why `organization_id` is denormalized onto every table
 
-Enforced in the app layer (every Drizzle query scopes by `vendor_id`
-from the authenticated session) *and* at the database layer via
-Postgres RLS, so a bug in the app layer alone can't leak cross-vendor
-data:
+Most of the FKs above (`product_images.product_id`,
+`order_items.order_id`, `product_modifier_options.product_id`, etc.)
+could derive their organization transitively through a join. It's
+stored directly on every table anyway because:
+
+1. **RLS policies stay uniform and joinless** — every policy is
+   `organization_id = current_setting('app.organization_id')::uuid`, on
+   every table, no exceptions to remember.
+2. **A single missed join can't leak data.** If a query anywhere forgot
+   to join back to check tenant ownership, the direct column means RLS
+   still catches it.
+
+## 5. Row-Level Security — enforced two ways, and neither is optional
+
+Every tenant-scoped table (everything except `organizations`, `users`,
+`sessions` — those are needed pre-auth, before an `organization_id` is
+even known) has RLS enabled, and the app additionally filters every
+query by `organization_id` explicitly. Both layers matter; **this was
+verified by actually testing cross-org isolation with real fixtures**,
+not by reading the SQL and assuming it worked — that testing surfaced
+two gotchas that would otherwise have made this whole section a no-op:
 
 ```sql
-alter table products enable row level security;
-alter table product_images enable row level security;
-alter table orders enable row level security;
-
--- FORCE, not just ENABLE — see the gotcha below. Without it, this whole
--- section does nothing.
-alter table products force row level security;
-alter table product_images force row level security;
-alter table orders force row level security;
-
-create policy tenant_isolation on products
-  using (vendor_id = current_setting('app.vendor_id')::uuid);
-
-create policy tenant_isolation on product_images
-  using (vendor_id = current_setting('app.vendor_id')::uuid);
-
-create policy tenant_isolation on orders
-  using (vendor_id = current_setting('app.vendor_id')::uuid);
+alter table customers enable row level security;
+alter table customers force row level security;
+create policy tenant_isolation on customers
+  using (organization_id = current_setting('app.organization_id')::uuid);
+-- ...repeated for products, product_images, modifiers, modifier_options,
+-- product_modifier_options, orders, order_items, order_item_modifiers
 ```
 
-The app sets `app.vendor_id` at the start of each request/transaction
-by resolving the session cookie → `sessions.user_id` → `users.vendor_id`,
-before any query runs.
-
-### Two gotchas that silently defeat all of this if missed
-
-Both were caught by hand — actually inserting cross-vendor fixtures and
-confirming a scoped query can't see the other vendor's row — not by reading
-the SQL and assuming it works. Worth re-testing this way after any change
-near auth, roles, or migrations.
-
-1. **`ENABLE ROW LEVEL SECURITY` alone doesn't apply to the table owner.**
-   Postgres exempts a table's owner from its own RLS policies by default.
-   Our app must run as **`FORCE ROW LEVEL SECURITY`** too, or connect as a
-   role that doesn't own the tables — otherwise every policy above is a
-   no-op for exactly the role that matters.
-2. **Roles created via the Neon console, CLI, or API get `BYPASSRLS`.**
-   They're granted `neon_superuser` membership, which bypasses RLS
-   entirely — `FORCE` doesn't help, `BYPASSRLS` wins regardless. The
-   app's Postgres role (`app_user`) must be created with **plain SQL**
-   (`CREATE ROLE app_user LOGIN PASSWORD '...'`, then explicit `GRANT`s —
-   never through Neon's role-management surface), which does *not* grant
-   `neon_superuser`. See
+1. **`ENABLE` alone doesn't apply to the table owner** — Postgres
+   exempts it by default. Every table above needs `FORCE ROW LEVEL
+   SECURITY` too.
+2. **Any Postgres role created via Neon's console/CLI/API gets
+   `BYPASSRLS`** (via `neon_superuser` membership), which overrides
+   `FORCE` regardless. The app connects as a role created with **plain
+   SQL** instead. Full detail, and the exact `CREATE ROLE`/`GRANT`
+   statements, in
    [TECH_STACK.md](./TECH_STACK.md#neon-role-setup-app_user-vs-the-owner-role).
+
+The app sets `app.organization_id` at the start of each request by
+resolving the session cookie → `sessions.user_id` → `users.organization_id`,
+inside the same transaction as the queries that follow it (necessary
+because Neon's pooled HTTP driver doesn't hold session state across
+separate calls — see `src/db/client.ts`).
 
 ## 6. Deferred (not in MVP schema)
 
-Per PRD §3 and §9 — intentionally not modeled yet, to avoid speculative
-schema:
+Per PRD §3 and §9 — intentionally not modeled yet:
 
-- Payment/deposit status on `orders`
-- Extended order lifecycle (`received`, `delivered`, `completed`)
-- Multi-Supplier claiming (`claimed_by`, `claimed_at` on `orders`)
-- Ad-hoc orders without a `product_id`
-- Normalized modifier tables (`modifier_groups` / `modifier_options`) —
-  the `jsonb` shape above covers display + grouping needs; only worth
-  normalizing if inventory-per-variant tracking is added later
+- Payment/deposit status on `order_items`
+- Multi-Supplier claiming (`claimed_by`, `claimed_at` on `order_items`)
+- Ad-hoc order items without a `product_id`
+- A distinct `shipped` value in `order_item_status` — deliberately
+  skipped, see [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md)
+- In-app account management (`users` are created by script, not UI)

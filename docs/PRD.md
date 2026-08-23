@@ -1,6 +1,6 @@
 # PRD: Mini POS — Order & Product Coordination Platform
 
-**Status:** Draft v1
+**Status:** Draft v2
 **Owner:** Yan Min Thwin
 **Last updated:** 2026-08-23
 
@@ -20,6 +20,10 @@ The business model today:
    as a message: a screenshot + product info + modifiers + quantity.
 5. The Supplier scrolls the group, manually reads every message, and tracks
    in their head (or notes) what still needs to be bought.
+6. Once bought and shipped to Customer Service, the item still has to be
+   **packed and sent to the real customer** — a step the current chat-based
+   process doesn't track at all; it just happens informally once the parcel
+   shows up.
 
 ### Problems with the current process
 
@@ -37,7 +41,7 @@ The business model today:
   they may buy it three separate times instead of once, or miss orders
   entirely.
 - **No status visibility.** Nothing tells anyone (Customer Service, Supplier, or the
-  business owner) what's been bought vs. still pending vs. cancelled.
+  business owner) what's been bought, arrived, packed, or sent.
 - **Not searchable.** Finding "what did customer X order yesterday" means
   scrolling chat history.
 
@@ -46,223 +50,281 @@ The business model today:
 Replace the shared-chat-as-database workflow with a lightweight internal
 tool where:
 
-- **Customer Service** builds and maintains a **product catalog** (name,
-  description, images, attributes) as they post things for sale, and log
-  each **customer order** against a catalog product with modifiers and
-  quantity.
-- The **Supplier** gets a clean, structured, always-current list of what
-  needs to be purchased today, with everything they need (image,
-  marketplace link if known, modifiers, quantity) in one place — no chat
-  scrolling — and marks items as purchased as they go.
+- **Customer Service** builds and maintains a **product catalog**, logs
+  each **customer's order** against it, and — once an item is bought and
+  arrives — **packs and ships it** to the real customer.
+- The **Supplier** gets a clean, always-current, *grouped-by-product*
+  purchase queue: everyone who wants the same item today, in one glance,
+  bought in one pass — not a list of individual orders to scan one by one.
 
 ## 3. Scope decisions (locked for MVP)
 
-These were deliberately narrowed to keep the MVP tight; see [Section 9](#9-future-ideas--post-mvp)
-for the deferred versions of each.
-
 | Decision | MVP choice |
 |---|---|
-| Payment tracking | **Out of scope.** No deposit/paid/unpaid tracking in the platform; payment stays a manual, off-platform concern for now. |
-| Supplier concurrency | **Single Supplier.** No claiming/assignment mechanism — only one person purchases, so there's no risk of double-buying. |
-| Order lifecycle | **Minimal:** `Pending → Purchased → Cancelled`. No receiving/delivery/completion tracking yet. |
-| Order–product link | **Product required.** Every order must reference a catalog product; no ad-hoc/one-off orders without a product record. |
+| Payment tracking | **Out of scope.** No deposit/paid/unpaid tracking; payment stays a manual, off-platform concern. |
+| Supplier concurrency | **Single Supplier.** No claiming/assignment mechanism. |
+| Order Item lifecycle | **`Pending → Purchased → Received → Packed → Completed`**, with `Cancelled` reachable from any stage except Completed. See [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md) for why this isn't the "minimal" lifecycle the first draft of this PRD assumed. |
+| Order structure | An **Order** can hold **multiple Products**, each its own **Order Item** (Product + modifier selection + quantity), each with its **own** status — not one status per Order. Every Order Item must reference a catalog Product; no ad-hoc/one-off items without a Product record. |
+| Modifiers | **Structured, not free text.** A Modifier (e.g. "Color") is a reusable, Organization-wide catalog with a global list of Options; each Product picks the subset of a Modifier's Options that apply to it. |
+| Customer | **A real, searchable entity** (name + contact) — not free text re-typed on every order. |
+| Roles & permissions | **Two real roles** (Customer Service, Supplier), each with its own default views — **not** a granular permission system. Both roles can technically perform any action; the split is about what you land on, not what you're blocked from. |
+| Account creation | **Out of band for MVP.** No in-app "add a teammate" screen — new logins are created via a script, run by whoever's setting the account up. |
 | Customer-facing access | **None.** Customers stay in chat/social media; they are not platform users in the MVP (see idea in §9). |
 
 ## 4. Users & Roles
 
-| Role | Who | Can do |
-|---|---|---|
-| **Customer Service** | Staff handling customer chats | Create/edit products; create/edit orders against products; view all orders |
-| **Supplier** | Staff who purchases from Lazada/TikTok | View/search products; view today's (and all) orders; mark orders Purchased/Cancelled |
-| **Admin** *(optional for MVP, see below)* | Business owner | Everything above + manage users |
+Two roles, each landing on a different default view — the split is about
+UX, not access control:
 
-**Open question:** are Customer Service and the Supplier the same one or two people
-right now, or genuinely separate staff? If it's just you + one or two
-people total, a single "Admin" role that can do everything (skip granular
-permissions) is enough for MVP and saves build time. Assumed: **yes,
-start with one role that can do everything, revisit permissions later**
-unless told otherwise.
+| Role | Who | Lands on | Can do |
+|---|---|---|---|
+| **Customer Service** | Staff handling customer chats, product upkeep, and packing | The Order log | Create/edit products (incl. Modifiers); create Orders/Customers; view & filter all Orders; work the **Packing Queue** (Received → Packed → Completed) |
+| **Supplier** | Staff who purchases from Lazada/TikTok Shop | The **Purchase Queue** | View/search products; batch-mark Order Items Purchased, grouped by Product across every Order and Customer; view Order history |
+
+Both roles can technically reach any screen/action — there's no backend
+permission matrix — but each role's navigation shows/hides what's
+relevant to their job (e.g. Supplier doesn't see a "Create Product"
+button in their nav).
+
+No third "Admin" role for MVP. New staff accounts (Customer Service or
+Supplier) are created by running a script against the database directly,
+not through an in-app screen — deliberately, to avoid building
+account-management UI for a team of two or three people.
 
 ## 5. Core Concepts / Data Model
 
+Full technical schema lives in [DATA_MODEL.md](./DATA_MODEL.md); this is
+the product-level shape. Every concept below belongs to exactly one
+**Organization** (the business/tenant) — irrelevant at this team's size,
+but see [TECH_STACK.md](./TECH_STACK.md) for why it's modeled from day
+one.
+
 ### 5.1 Product
 
-The catalog entry for something being sold — created once, reused across
-many orders.
+The catalog entry for something being resold — created once, referenced
+by many Order Items.
 
 | Field | Notes |
 |---|---|
 | Name | Required |
 | Description | Required |
-| Images | One or more; the reference images used in the sale post / shown to customers |
+| Images | One or more |
 | Source marketplace | Lazada / TikTok Shop / Other |
-| Source URL | **Link to the exact listing**, if known — see §9.1, this is the single highest-leverage field to add |
-| Available modifiers | Free-form list, e.g. `Color: Black, White, Red` / `Size: S, M, L` — displayed as options when creating an order |
-| Price (customer-facing) | Optional for MVP, but cheap to include now |
-| Status | Active / Archived |
+| Source URL | **Link to the exact listing**, if known — see §9.1, the single highest-leverage field on this record |
+| Modifiers | Which of the Organization's Modifiers apply to this Product, and which of each Modifier's Options — e.g. this product uses "Color" and offers Black/White (out of a larger global Color palette) |
+| Price (customer-facing, MMK) | Optional for MVP |
+| Status | Active / Archived — Archived products drop out of the order-creation picker but existing Order Items referencing them are untouched; reversible |
 | Created by / Created at | Audit trail |
 
-### 5.2 Order
+### 5.2 Modifier & Modifier Option
 
-A single customer's request for a product, logged by Customer Service.
+A **Modifier** (e.g. "Color", "Size") is a reusable attribute type,
+shared across the whole catalog — not typed fresh per product. Each
+Modifier has a global list of **Options** (e.g. "Black", "White", "Red"
+under "Color"). Both can be created inline while creating or editing a
+Product, so Customer Service never has to leave the flow to set one up.
+
+A Product doesn't automatically get every Option of a Modifier it uses —
+it picks the subset that actually applies to it (this T-shirt only comes
+in Black/White, even though "Color" globally has more options).
+
+### 5.3 Customer
+
+A real, searchable entity — not free text re-typed on every order.
 
 | Field | Notes |
 |---|---|
-| Product | Required, references a Product |
-| Customer name / contact | e.g. social media handle, phone, or chat name — free text |
-| Selected modifier(s) | e.g. "Black, size M" — chosen from the product's modifier list, or free text if not pre-defined |
-| Quantity | Required, default 1 |
-| Order screenshot | Optional image upload (the chat screenshot Customer Service currently passes along) — useful during transition / for disputes |
-| Notes | Free text — anything that doesn't fit elsewhere (e.g. "customer wants matte finish") |
-| Status | `Pending` (default) → `Purchased` → done, or → `Cancelled` |
+| Name | Required |
+| Contact | Phone, social handle, etc. |
+| Created at | |
+
+Created inline while logging an Order (search-or-create), the same
+pattern as Modifiers on Products.
+
+### 5.4 Order
+
+A single request from a Customer, logged by Customer Service. **Has no
+status of its own** — see §5.5 and [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md)
+for why. Can hold one or more Products.
+
+| Field | Notes |
+|---|---|
+| Customer | Required, references a Customer |
+| Screenshot | Optional image upload — the chat screenshot, useful during transition / for disputes |
+| Notes | Free text |
 | Created by (Customer Service) / Created at | Audit trail |
-| Purchased at | Set automatically when marked Purchased |
 
-### 5.3 User
+### 5.5 Order Item
 
-Just enough for login + attribution (who created what).
+One line of an Order: one Product, one Modifier-Option combination, one
+quantity. Carries its **own** status, independently of every other Item
+on the same Order — this is what lets the Supplier's Purchase Queue
+batch-purchase one Product across many different Orders and Customers at
+once without disturbing unrelated Items.
+
+| Field | Notes |
+|---|---|
+| Order | Required, references an Order |
+| Product | Required, references a Product |
+| Selected modifier(s) | e.g. Color=Black, Size=M — chosen from that Product's available Options |
+| Quantity | Required, default 1 |
+| Status | `Pending` → `Purchased` → `Received` → `Packed` → `Completed`, or `Cancelled` from any stage except Completed |
+| Cancellation reason | Optional free text, captured when status → Cancelled |
+| Purchased at / Received at / Packed at / Completed at | Set automatically on each transition |
+
+### 5.6 User
 
 | Field | Notes |
 |---|---|
 | Name | |
 | Email / username | |
-| Role | Customer Service / Supplier / Admin (or single role for MVP, per §4) |
+| Role | Customer Service / Supplier (see §4) |
 
 ## 6. Features (MVP)
 
 ### 6.1 Product Management (Customer Service)
-- Create a product: name, description, upload image(s), source
-  marketplace, source URL, modifiers, price.
+- Create a product: name, description, images, source marketplace,
+  source URL, price.
+- Attach Modifiers to it — pick from existing ones, or create a new
+  Modifier (and its Options) inline without leaving the form.
 - Edit / archive a product.
 - List/search products (by name, status).
 
 ### 6.2 Order Management (Customer Service)
-- Create an order: pick a product (search/select from catalog), pick
-  modifier(s), enter quantity, optionally attach a screenshot and note,
-  enter customer contact.
-- Edit an order (e.g. fix quantity) while still Pending.
-- Cancel an order.
-- View list of all orders — filter by status and date.
+- Create an order: search-or-create the Customer, then add one or more
+  Order Items (product, modifier selection, quantity each), plus an
+  optional screenshot/note for the whole order.
+- Edit an Order Item (e.g. fix quantity) while still Pending.
+- Cancel an Order Item, from any stage before Completed, with an
+  optional reason.
+- View/filter the Order log — by status, date, customer.
 
-### 6.3 Supplier View
-- **Today's Pending Orders** — the core screen. Shows every pending
-  order with: product image, product name + source URL (tap to open
-  the Lazada/TikTok listing directly), modifiers, quantity, customer
-  reference, and a **"Mark Purchased"** button.
-- Orders grouped/sorted by product, so if 3 customers want the same
-  item today, the Supplier sees "Product X — 3 orders, qty 5 total" instead
-  of three separate scattered entries. *(See §9.2 — this can go further.)*
-- Ability to view/search past orders (e.g. "what was purchased
-  yesterday").
-- Mark an order Purchased or Cancelled.
+### 6.3 Purchase Queue (Supplier)
+The Supplier's dedicated, filterable home screen — **the core feature**:
+Pending Order Items grouped by Product, across every Order and Customer,
+so today's demand for each product is visible **at a glance**, not by
+scanning a list of individual orders.
 
-### 6.4 Auth
+- Each group shows: product image, name, source URL (tap to jump
+  straight to the Lazada/TikTok listing), total quantity needed, and how
+  many distinct orders make up that total.
+- **Batch action**: mark an entire group Purchased in one tap — every
+  matching pending Order Item, across every order/customer, moves to
+  Purchased together.
+- Filterable (by product/search).
+- Separate view to search/filter Order history (all statuses, past
+  dates).
+
+### 6.4 Packing Queue (Customer Service)
+A dedicated, filterable view of Order Items in Purchased / Received /
+Packed status — separate from the general Order log, because "what's
+arrived and needs packing" is a different question from "what did we log
+today."
+
+- Mark an item Received (arrived), then Packed, then Completed (sent to
+  the customer).
+- Filterable by sub-status, date, customer.
+
+### 6.5 Auth
 - Simple login (email/password) so actions are attributed to a person.
+- Each role sees timestamps in its own local time: Supplier in Thailand
+  time, Customer Service in Myanmar time (presentation-only — no data
+  actually changes).
 
 ## 7. User Flows
 
-### 7.1 Customer Service logs a new customer order
-1. Customer in chat sends an image and says "I want this in black, size
-   M, qty 2."
-2. Customer Service searches the catalog for the matching product.
-   - **If it exists:** select it.
-   - **If it doesn't exist yet:** create the product first (name,
-     description, save the image, source URL if the customer already
-     found it on Lazada/TikTok, modifiers) — then continue.
-3. Customer Service creates the order: selects modifiers (Black, M), quantity
-   (2), customer contact, optional screenshot/note. Save.
-4. Order appears instantly in the Supplier's Pending list. No chat message
-   needed.
+### 7.1 Customer Service logs a new order
+1. Customer in chat sends images and says "I want this in black, size M,
+   qty 2, and also this other thing in red."
+2. Customer Service searches for the Customer (or creates them, if new).
+3. For each item the customer wants: search the catalog for the matching
+   product (creating it first, with modifiers, if it doesn't exist yet),
+   pick the modifier selection and quantity, add it as an Order Item.
+4. Attach the chat screenshot/notes to the Order as a whole. Save.
+5. Every new Order Item appears instantly in the Supplier's Purchase
+   Queue, grouped with anyone else's request for the same product. No
+   chat message needed.
 
-### 7.2 Supplier processes today's orders
-1. Supplier opens "Today's Pending Orders."
-2. Sees orders grouped by product with total quantity needed.
-3. Taps the source URL to jump straight to the Lazada/TikTok listing
-   (skips manual image search entirely, when the URL was captured).
-4. Buys the item(s), then taps "Mark Purchased" on each order (or a
-   batch action for a grouped product).
-5. Order disappears from Pending, moves into purchased history.
+### 7.2 Supplier clears today's Purchase Queue
+1. Supplier opens the Purchase Queue — sees every product with pending
+   demand, grouped, with total quantity needed per product.
+2. Taps a product's source URL to jump straight to the Lazada/TikTok
+   listing (skips manual image search entirely, when the URL was
+   captured).
+3. Buys the total quantity needed for that product in one purchase.
+4. Taps the batch action — every pending Order Item in that group moves
+   to Purchased at once.
+5. Repeats for the next product group. Done for the day once the queue's
+   clear.
+
+### 7.3 Customer Service packs and ships
+1. Customer Service opens the Packing Queue once a Purchased item
+   physically arrives, marks it Received.
+2. Packs it, marks it Packed.
+3. Sends it to the real customer, marks it Completed.
 
 ## 8. Non-Functional Requirements
 
-- **Mobile-first, not just mobile-friendly.** This is a hard requirement,
-  not a nice-to-have: Customer Service and the Supplier will use this primarily
-  on phones, not desktop. Every screen is designed for the smallest
-  target size first, then progressively enhanced for larger viewports —
-  not designed for desktop and squeezed to fit. Must render correctly
-  across the full range of phone sizes, from small (~320–375px wide) to
-  large/phablet.
-- **Performant and robust on real-world phone browsers.** Fast and
-  reliable on the actual devices and networks in use (mid-range Android
-  devices are the realistic baseline, not flagship phones), on Chrome
-  Android, Safari iOS, and Samsung Internet — and tolerant of the
-  variable/slow mobile network conditions common in Myanmar and
-  Thailand (see [TECH_STACK.md](./TECH_STACK.md)): small JS payloads,
-  resilient image loading, no hard failures on a flaky connection.
-- **Fast product/order entry**: this replaces a chat message, so it must
-  be at least as fast as typing a message — minimize required fields,
-  support pasting an image directly.
-- **Image storage**: need reliable image upload/storage (product images
-  + order screenshots).
+- **Mobile-first, not just mobile-friendly.** Hard requirement — Customer
+  Service and the Supplier use this primarily on phones. Every screen is
+  designed for the smallest target size first (~320–375px), then
+  progressively enhanced upward.
+- **Performant and robust on real-world phone browsers.** Reliable on
+  mid-range Android devices, on Chrome Android / Safari iOS / Samsung
+  Internet, tolerant of variable/slow mobile networks (see
+  [TECH_STACK.md](./TECH_STACK.md)).
+- **Fast product/order entry**: at least as fast as typing a chat
+  message — minimize required fields, support pasting an image directly.
+- **Image storage**: reliable image upload/storage (product images +
+  order screenshots).
 - **Small scale**: single small team, low concurrent users — no need to
   over-engineer for scale in MVP.
 
 ## 9. Future Ideas / Post-MVP
 
-Brainstormed improvements, deliberately deferred but worth having on the
-roadmap:
-
 1. **Marketplace URL capture as a first-class habit.** The single
-   biggest efficiency win available: today, once Customer Service (or the
-   customer) finds the item on Lazada/TikTok, that link is thrown away
-   after being screenshotted. If Customer Service gets in the habit of pasting
-   the URL into the product record, the Supplier's "search by image"
-   step — the most manual/error-prone part of the whole process —
-   disappears almost entirely. Worth emphasizing in team process even
-   before any extra tooling.
-2. **Smarter order aggregation for the Supplier.** Beyond grouping same-day
-   orders by product (already in MVP §6.3), could show running totals
-   across a rolling window ("12 pending orders for Product X across the
-   last 3 days") so the Supplier can decide to batch-purchase.
-3. **Payment tracking.** Add deposit/paid/unpaid status per order, so
-   the Supplier only purchases orders that are actually funded — a common
-   safeguard in resale/dropship businesses. Deferred per §3, but likely
+   biggest efficiency win available: once Customer Service (or the
+   customer) finds the item on Lazada/TikTok, paste the URL into the
+   product record so the Supplier's search-by-image step disappears
+   almost entirely.
+2. **Smarter order aggregation for the Supplier.** Running totals across
+   a rolling window ("12 pending items for Product X across the last 3
+   days"), beyond same-day grouping.
+3. **Payment tracking.** Deposit/paid/unpaid status per Order Item, so
+   the Supplier only purchases funded orders. Deferred per §3; likely
    the first thing to revisit post-MVP.
-4. **Extended order lifecycle.** `Purchased → Received → Delivered to
-   customer → Completed`, giving end-to-end visibility instead of
-   stopping at "bought."
-5. **Multi-Supplier support with claiming.** If a second Supplier is added,
-   an explicit "claim" action prevents two people from buying the same
-   order.
-6. **Customer-facing lookup.** A simple, no-login page/link Customer Service
-   can send a customer to see their own order status ("Purchased,
-   arriving soon") instead of the customer having to ask in chat.
-7. **Ad-hoc orders without a pre-made product.** For rare one-off items
-   not worth cataloging.
-8. **Basic reporting.** Daily/weekly order counts, most-ordered
-   products, pending purchase value — useful once volume grows.
-9. **Notifications.** Ping the Supplier (e.g. via chat bot) when new
-   orders come in, instead of them having to check the app.
-10. **Direct chat/social integration.** Eventually, auto-create a draft
-    order from a forwarded chat message or DM, instead of manual entry.
+4. **Multi-Supplier support with claiming.** If a second Supplier joins,
+   an explicit "claim" action prevents two people buying the same item.
+5. **Customer-facing lookup.** A simple, no-login page/link Customer
+   Service can send a customer to see their own order status — more
+   feasible now that Customer is a real entity, but still deferred.
+6. **Ad-hoc Order Items without a pre-made Product.** For rare one-off
+   items not worth cataloging.
+7. **Basic reporting.** Daily/weekly counts, most-ordered products,
+   cancellation reasons breakdown (now cheap, since reasons are
+   captured) — useful once volume grows.
+8. **Notifications.** Ping the Supplier when new items land in the
+   Purchase Queue, instead of them having to check the app.
+9. **Direct chat/social integration.** Auto-create a draft order from a
+   forwarded chat message or DM.
+10. **In-app account management.** Once the team's bigger than a
+    script-based setup comfortably supports.
+11. **A distinct "Shipped" (in-transit) Order Item status.** Deliberately
+    skipped in [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md) —
+    revisit only if people actually start asking "is it shipped yet."
 
 ## 10. Success Metrics
 
-- Supplier no longer needs to open/scroll the shared chat group to know
-  what to purchase.
-- Time from "Customer Service logs order" to "Supplier can see and act on it"
-  is near-instant (vs. depending on the Supplier noticing a chat message).
+- Supplier clears the day's purchasing by scanning one grouped screen,
+  not scrolling a chat group or a flat order list.
+- Time from "Customer Service logs an item" to "it's visible in the
+  Purchase Queue" is near-instant.
+- Customer Service can tell, at a glance, what's arrived and needs
+  packing vs. what's still out for purchase.
 - Reduction in duplicate purchases or missed orders caused by chat
   scrollback being the only record.
 
 ## 11. Open Questions
 
-- Are Customer Service and Supplier distinct people today, or is role separation
-  mostly for future-proofing? (Affects whether we need real
-  role-based permissions in MVP or can ship with one role — assumed
-  the latter for now, see §4.)
-- Should product modifiers be a structured list (e.g., predefined
-  `Color`/`Size` option sets) or plain free text? Structured is more
-  work but makes the Supplier's grouped view (§6.3) more reliable.
-- Any existing product catalog / order history to migrate, or starting
-  fresh?
+None outstanding — this section will pick up again as new questions
+surface during build.

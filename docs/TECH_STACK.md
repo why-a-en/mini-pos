@@ -28,21 +28,22 @@ traffic. Hosting is not a lock-in risk — it's a standard Next.js app,
 portable to another host later with minimal change.
 
 ### Neon Postgres (not Supabase)
-Relational data fits this domain (vendors ↔ products ↔ orders ↔ users).
-We initially considered Supabase for its bundled DB+Auth+Storage+Realtime,
-but rejected it: those bundled services wrap Postgres in
-Supabase-specific mechanics (GoTrue JWTs, PostgREST auto-API, RLS
-conventions tied to its auth), which becomes a real migration cost once
-this grows into a **multi-vendor platform** with its own auth/billing/
-onboarding needs. Plain Postgres (Neon) has no such wrapper — same SQL
-runs anywhere, and Neon lets us pick a region close to our actual users.
+Relational data fits this domain (organizations ↔ products ↔ orders ↔
+users). We initially considered Supabase for its bundled
+DB+Auth+Storage+Realtime, but rejected it: those bundled services wrap
+Postgres in Supabase-specific mechanics (GoTrue JWTs, PostgREST
+auto-API, RLS conventions tied to its auth), which becomes a real
+migration cost once this grows into a **multi-tenant platform** with
+its own auth/billing/onboarding needs. Plain Postgres (Neon) has no
+such wrapper — same SQL runs anywhere, and Neon lets us pick a region
+close to our actual users.
 
 ### Self-rolled auth (not Clerk / Supabase Auth) — deliberately temporary
 We considered Clerk (its Organizations feature maps well onto
-multi-tenant B2B: one org per vendor), but decided to roll our own
-for now instead, with the explicit intent to migrate to a managed
-provider (Clerk or otherwise) once the multi-vendor platform is real
-and auth needs grow (SSO, invites, MFA, etc.).
+multi-tenant B2B — one Clerk org per tenant), but decided to roll our
+own for now instead, with the explicit intent to migrate to a managed
+provider (Clerk or otherwise) once the platform is genuinely
+multi-tenant and auth needs grow (SSO, invites, MFA, etc.).
 
 Kept deliberately minimal and boring, so it's cheap to rip out later:
 - **Password hashing:** argon2.
@@ -57,7 +58,7 @@ Kept deliberately minimal and boring, so it's cheap to rip out later:
   swapping in a managed provider later is a contained change, not a
   rewrite.
 - `users.email` / `users.password_hash` are plain, portable columns —
-  no vendor-specific user ID to migrate away from.
+  no organization-specific user ID to migrate away from.
 
 ### Cloudflare R2 for storage, Cloudflare as CDN/DNS
 S3-compatible API — an industry standard, trivially portable to AWS S3
@@ -90,28 +91,32 @@ aware of, not something any CDN fully solves.
 
 | Option | Why not (for now) |
 |---|---|
-| **Supabase** (bundled DB+Auth+Storage+Realtime) | Great for a single-tenant MVP, but its bundled services couple app logic to Supabase-specific mechanics — expensive to unwind once this becomes a real multi-vendor platform. |
+| **Supabase** (bundled DB+Auth+Storage+Realtime) | Great for a single-tenant MVP, but its bundled services couple app logic to Supabase-specific mechanics — expensive to unwind once this becomes a real multi-tenant platform. |
 | **Full Cloudflare stack** (Workers + D1/Hyperdrive) | Cloudflare Workers' Next.js support (`@opennextjs/cloudflare`) has real rough edges (Node API gaps, edge-only ORM drivers); D1 is less mature than Postgres for relational multi-tenant data. Not worth the complexity at current traffic levels. |
-| **Real-time push (Pusher/WebSockets/Supabase Realtime)** | Supplier's "instant" pending-orders view can be served by simple polling/SWR revalidation at this scale (a few staff, low order volume) — a 3–5s poll is indistinguishable from push here. Revisit only if usage grows enough to need it. |
-| **Clerk / managed auth** | Not rejected, just deferred — self-rolled auth (§2) covers MVP needs with zero added services. Revisit once multi-vendor onboarding needs SSO, invites, or MFA; the plain `email`/`password_hash` schema is designed to make that swap cheap. |
+| **Real-time push (Pusher/WebSockets/Supabase Realtime)** | Supplier's "instant" Purchase Queue can be served by simple polling/SWR revalidation at this scale (a few staff, low order volume) — a 3–5s poll is indistinguishable from push here. Revisit only if usage grows enough to need it. |
+| **Clerk / managed auth** | Not rejected, just deferred — self-rolled auth (§2) covers MVP needs with zero added services. Revisit once multi-tenant onboarding needs SSO, invites, or MFA; the plain `email`/`password_hash` schema is designed to make that swap cheap. |
 
 ## 4. Multi-tenancy — the decision that matters more than tool choice
 
-Even though the MVP has exactly one vendor (you), the schema is built
-multi-tenant from day one, because retrofitting this later is far more
-painful than designing for it now:
+Even though the MVP has exactly one Organization (you), the schema is
+built multi-tenant from day one, because retrofitting this later is far
+more painful than designing for it now:
 
-- **Shared schema, `vendor_id` column on every table** (the standard,
-  scalable SaaS pattern — Slack/Notion-style workspace model), rather
-  than schema-per-tenant or database-per-tenant (which becomes
-  operationally painful once there are more than a handful of vendors —
-  migrations run N times).
-- **Postgres Row-Level Security (RLS) policies keyed on `vendor_id`** as
-  defense-in-depth on top of app-level scoping — a native Postgres
-  feature (works on Neon, not Supabase-exclusive). This protects against
-  the classic bug of a query missing its `WHERE vendor_id = ...` clause
-  and leaking one vendor's data to another — cheap insurance now,
-  a real incident later if skipped.
+- **Shared schema, `organization_id` column on every tenant-scoped
+  table** (the standard, scalable SaaS pattern — Slack/Notion-style
+  workspace model), rather than schema-per-tenant or
+  database-per-tenant (which becomes operationally painful once there
+  are more than a handful of Organizations — migrations run N times).
+- **Postgres Row-Level Security (RLS) policies keyed on
+  `organization_id`** as defense-in-depth on top of app-level scoping —
+  a native Postgres feature (works on Neon, not Supabase-exclusive).
+  This protects against the classic bug of a query missing its `WHERE
+  organization_id = ...` clause and leaking one Organization's data to
+  another — cheap insurance now, a real incident later if skipped.
+
+(Called "vendor" earlier in this project — renamed to "Organization" to
+stop colliding with the unrelated "Supplier" role; see
+[CONTEXT.md](./CONTEXT.md).)
 
 See [DATA_MODEL.md](./DATA_MODEL.md) for the schema this produces.
 
@@ -126,7 +131,7 @@ on the Neon project:
 | `app_user` | All app runtime queries (`DATABASE_URL`, pooled) | **Plain SQL**, by hand |
 
 This split exists because of a real gotcha, caught by actually testing
-cross-vendor isolation rather than assuming the RLS SQL worked: **any
+cross-org isolation rather than assuming the RLS SQL worked: **any
 role created through Neon's console, CLI, or API is granted
 `neon_superuser` membership, which includes `BYPASSRLS`** — it skips
 every RLS policy unconditionally, regardless of `FORCE ROW LEVEL
@@ -143,15 +148,16 @@ grant select, insert, update, delete on all tables in schema public to app_user;
 
 If this project's database is ever recreated, or a new environment is
 provisioned, **recreate `app_user` the same way — never via `neon roles
-create` or the Neon console** — and re-verify with a real cross-vendor
-test (insert two vendors' data, confirm a session scoped to one can't
-see the other's), not just by checking the policy SQL ran without error.
+create` or the Neon console** — and re-verify with a real cross-org
+test (insert two organizations' data, confirm a session scoped to one
+can't see the other's), not just by checking the policy SQL ran without
+error.
 
 ## 5. Cost expectation
 
 Vercel free tier + Neon free tier + Cloudflare free tier (R2 + CDN/DNS)
 should run this at **$0/month** through MVP and likely well into early
-multi-vendor growth. Self-rolled auth adds no service cost at all — the
+multi-tenant growth. Self-rolled auth adds no service cost at all — the
 first dollar spent on auth will be whenever we deliberately migrate to
 a managed provider.
 

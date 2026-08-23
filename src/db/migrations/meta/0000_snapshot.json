@@ -1,11 +1,11 @@
 {
-  "id": "f02c96f6-b40e-4fbb-afb6-5a4577baf88d",
+  "id": "046b5751-e587-4a6a-9ec6-9c3feb7f2903",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.orders": {
-      "name": "orders",
+    "public.customers": {
+      "name": "customers",
       "schema": "",
       "columns": {
         "id": {
@@ -15,8 +15,419 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "vendor_id": {
-          "name": "vendor_id",
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "contact": {
+          "name": "contact",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "customers_organization_name_idx": {
+          "name": "customers_organization_name_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "customers_organization_id_organizations_id_fk": {
+          "name": "customers_organization_id_organizations_id_fk",
+          "tableFrom": "customers",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.modifier_options": {
+      "name": "modifier_options",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modifier_id": {
+          "name": "modifier_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "modifier_options_modifier_value_unique": {
+          "name": "modifier_options_modifier_value_unique",
+          "columns": [
+            {
+              "expression": "modifier_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "value",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "modifier_options_organization_id_organizations_id_fk": {
+          "name": "modifier_options_organization_id_organizations_id_fk",
+          "tableFrom": "modifier_options",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "modifier_options_modifier_id_modifiers_id_fk": {
+          "name": "modifier_options_modifier_id_modifiers_id_fk",
+          "tableFrom": "modifier_options",
+          "tableTo": "modifiers",
+          "columnsFrom": [
+            "modifier_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.modifiers": {
+      "name": "modifiers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "modifiers_organization_name_unique": {
+          "name": "modifiers_organization_name_unique",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "modifiers_organization_id_organizations_id_fk": {
+          "name": "modifiers_organization_id_organizations_id_fk",
+          "tableFrom": "modifiers",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.order_item_modifiers": {
+      "name": "order_item_modifiers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_item_id": {
+          "name": "order_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modifier_option_id": {
+          "name": "modifier_option_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "order_item_modifiers_unique": {
+          "name": "order_item_modifiers_unique",
+          "columns": [
+            {
+              "expression": "order_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "modifier_option_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "order_item_modifiers_item_idx": {
+          "name": "order_item_modifiers_item_idx",
+          "columns": [
+            {
+              "expression": "order_item_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "order_item_modifiers_organization_id_organizations_id_fk": {
+          "name": "order_item_modifiers_organization_id_organizations_id_fk",
+          "tableFrom": "order_item_modifiers",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "order_item_modifiers_order_item_id_order_items_id_fk": {
+          "name": "order_item_modifiers_order_item_id_order_items_id_fk",
+          "tableFrom": "order_item_modifiers",
+          "tableTo": "order_items",
+          "columnsFrom": [
+            "order_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "order_item_modifiers_modifier_option_id_modifier_options_id_fk": {
+          "name": "order_item_modifiers_modifier_option_id_modifier_options_id_fk",
+          "tableFrom": "order_item_modifiers",
+          "tableTo": "modifier_options",
+          "columnsFrom": [
+            "modifier_option_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.order_items": {
+      "name": "order_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -27,25 +438,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "customer_name": {
-          "name": "customer_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "customer_contact": {
-          "name": "customer_contact",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "selected_modifiers": {
-          "name": "selected_modifiers",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
         "quantity": {
           "name": "quantity",
           "type": "integer",
@@ -53,31 +445,43 @@
           "notNull": true,
           "default": 1
         },
-        "screenshot_url": {
-          "name": "screenshot_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
-          "type": "order_status",
+          "type": "order_item_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
           "default": "'pending'"
         },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
+        "cancellation_reason": {
+          "name": "cancellation_reason",
+          "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "purchased_at": {
+          "name": "purchased_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "packed_at": {
+          "name": "packed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -85,20 +489,41 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "purchased_at": {
-          "name": "purchased_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
-        "orders_vendor_status_created_idx": {
-          "name": "orders_vendor_status_created_idx",
+        "order_items_org_product_status_idx": {
+          "name": "order_items_org_product_status_idx",
           "columns": [
             {
-              "expression": "vendor_id",
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "order_items_org_status_created_idx": {
+          "name": "order_items_org_status_created_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -121,23 +546,17 @@
           "method": "btree",
           "with": {}
         },
-        "orders_vendor_product_status_idx": {
-          "name": "orders_vendor_product_status_idx",
+        "order_items_org_order_idx": {
+          "name": "order_items_org_order_idx",
           "columns": [
             {
-              "expression": "vendor_id",
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "product_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
+              "expression": "order_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -150,12 +569,12 @@
         }
       },
       "foreignKeys": {
-        "orders_vendor_id_vendors_id_fk": {
-          "name": "orders_vendor_id_vendors_id_fk",
-          "tableFrom": "orders",
-          "tableTo": "vendors",
+        "order_items_organization_id_organizations_id_fk": {
+          "name": "order_items_organization_id_organizations_id_fk",
+          "tableFrom": "order_items",
+          "tableTo": "organizations",
           "columnsFrom": [
-            "vendor_id"
+            "organization_id"
           ],
           "columnsTo": [
             "id"
@@ -163,12 +582,162 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "orders_product_id_products_id_fk": {
-          "name": "orders_product_id_products_id_fk",
-          "tableFrom": "orders",
+        "order_items_order_id_orders_id_fk": {
+          "name": "order_items_order_id_orders_id_fk",
+          "tableFrom": "order_items",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "order_items_product_id_products_id_fk": {
+          "name": "order_items_product_id_products_id_fk",
+          "tableFrom": "order_items",
           "tableTo": "products",
           "columnsFrom": [
             "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.orders": {
+      "name": "orders",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "screenshot_url": {
+          "name": "screenshot_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "orders_organization_customer_idx": {
+          "name": "orders_organization_customer_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_organization_created_idx": {
+          "name": "orders_organization_created_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "orders_organization_id_organizations_id_fk": {
+          "name": "orders_organization_id_organizations_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_customer_id_customers_id_fk": {
+          "name": "orders_customer_id_customers_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "customers",
+          "columnsFrom": [
+            "customer_id"
           ],
           "columnsTo": [
             "id"
@@ -192,6 +761,57 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.organizations": {
+      "name": "organizations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "organization_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -207,8 +827,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "vendor_id": {
-          "name": "vendor_id",
+        "organization_id": {
+          "name": "organization_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -257,12 +877,12 @@
         }
       },
       "foreignKeys": {
-        "product_images_vendor_id_vendors_id_fk": {
-          "name": "product_images_vendor_id_vendors_id_fk",
+        "product_images_organization_id_organizations_id_fk": {
+          "name": "product_images_organization_id_organizations_id_fk",
           "tableFrom": "product_images",
-          "tableTo": "vendors",
+          "tableTo": "organizations",
           "columnsFrom": [
-            "vendor_id"
+            "organization_id"
           ],
           "columnsTo": [
             "id"
@@ -286,9 +906,144 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
+    },
+    "public.product_modifier_options": {
+      "name": "product_modifier_options",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modifier_option_id": {
+          "name": "modifier_option_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "product_modifier_options_unique": {
+          "name": "product_modifier_options_unique",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "modifier_option_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "product_modifier_options_product_idx": {
+          "name": "product_modifier_options_product_idx",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "product_modifier_options_organization_id_organizations_id_fk": {
+          "name": "product_modifier_options_organization_id_organizations_id_fk",
+          "tableFrom": "product_modifier_options",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "product_modifier_options_product_id_products_id_fk": {
+          "name": "product_modifier_options_product_id_products_id_fk",
+          "tableFrom": "product_modifier_options",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "product_modifier_options_modifier_option_id_modifier_options_id_fk": {
+          "name": "product_modifier_options_modifier_option_id_modifier_options_id_fk",
+          "tableFrom": "product_modifier_options",
+          "tableTo": "modifier_options",
+          "columnsFrom": [
+            "modifier_option_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
     },
     "public.products": {
       "name": "products",
@@ -301,8 +1056,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "vendor_id": {
-          "name": "vendor_id",
+        "organization_id": {
+          "name": "organization_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -331,13 +1086,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "modifiers": {
-          "name": "modifiers",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
         },
         "price": {
           "name": "price",
@@ -375,11 +1123,11 @@
         }
       },
       "indexes": {
-        "products_vendor_status_idx": {
-          "name": "products_vendor_status_idx",
+        "products_organization_status_idx": {
+          "name": "products_organization_status_idx",
           "columns": [
             {
-              "expression": "vendor_id",
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -396,11 +1144,11 @@
           "method": "btree",
           "with": {}
         },
-        "products_vendor_name_idx": {
-          "name": "products_vendor_name_idx",
+        "products_organization_name_idx": {
+          "name": "products_organization_name_idx",
           "columns": [
             {
-              "expression": "vendor_id",
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -419,12 +1167,12 @@
         }
       },
       "foreignKeys": {
-        "products_vendor_id_vendors_id_fk": {
-          "name": "products_vendor_id_vendors_id_fk",
+        "products_organization_id_organizations_id_fk": {
+          "name": "products_organization_id_organizations_id_fk",
           "tableFrom": "products",
-          "tableTo": "vendors",
+          "tableTo": "organizations",
           "columnsFrom": [
-            "vendor_id"
+            "organization_id"
           ],
           "columnsTo": [
             "id"
@@ -448,9 +1196,19 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "policies": {},
+      "policies": {
+        "tenant_isolation": {
+          "name": "tenant_isolation",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": [
+            "public"
+          ],
+          "using": "organization_id = current_setting('app.organization_id')::uuid"
+        }
+      },
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.sessions": {
       "name": "sessions",
@@ -553,8 +1311,8 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "vendor_id": {
-          "name": "vendor_id",
+        "organization_id": {
+          "name": "organization_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
@@ -582,8 +1340,7 @@
           "type": "user_role",
           "typeSchema": "public",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'admin'"
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -594,11 +1351,11 @@
         }
       },
       "indexes": {
-        "users_vendor_id_idx": {
-          "name": "users_vendor_id_idx",
+        "users_organization_id_idx": {
+          "name": "users_organization_id_idx",
           "columns": [
             {
-              "expression": "vendor_id",
+              "expression": "organization_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -626,12 +1383,12 @@
         }
       },
       "foreignKeys": {
-        "users_vendor_id_vendors_id_fk": {
-          "name": "users_vendor_id_vendors_id_fk",
+        "users_organization_id_organizations_id_fk": {
+          "name": "users_organization_id_organizations_id_fk",
           "tableFrom": "users",
-          "tableTo": "vendors",
+          "tableTo": "organizations",
           "columnsFrom": [
-            "vendor_id"
+            "organization_id"
           ],
           "columnsTo": [
             "id"
@@ -645,57 +1402,27 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "public.vendors": {
-      "name": "vendors",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "vendor_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'active'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
   "enums": {
-    "public.order_status": {
-      "name": "order_status",
+    "public.order_item_status": {
+      "name": "order_item_status",
       "schema": "public",
       "values": [
         "pending",
         "purchased",
+        "received",
+        "packed",
+        "completed",
         "cancelled"
+      ]
+    },
+    "public.organization_status": {
+      "name": "organization_status",
+      "schema": "public",
+      "values": [
+        "active",
+        "suspended"
       ]
     },
     "public.product_status": {
@@ -719,17 +1446,8 @@
       "name": "user_role",
       "schema": "public",
       "values": [
-        "admin",
         "customer_service",
         "supplier"
-      ]
-    },
-    "public.vendor_status": {
-      "name": "vendor_status",
-      "schema": "public",
-      "values": [
-        "active",
-        "suspended"
       ]
     }
   },

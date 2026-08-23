@@ -1,32 +1,59 @@
 import Link from "next/link";
-import { and, asc, eq } from "drizzle-orm";
-import { withCurrentVendor } from "@/lib/tenancy";
-import { orders, products } from "@/db/schema";
-import { cancelOrderAction, markPurchasedAction } from "./actions";
+import { and, desc, eq, ilike, inArray } from "drizzle-orm";
+import { withCurrentOrganization } from "@/lib/tenancy";
+import { orders, orderItems, customers } from "@/db/schema";
+import { fieldInputClass } from "@/components/form-field";
 
-// The Supplier's core screen (PRD §6.3): every pending order, grouped
-// visually by product name so repeat items are easy to spot, with a
-// direct link to the marketplace listing when Customer Service captured one.
-export default async function OrdersPage() {
-  const pendingOrders = await withCurrentVendor(({ vendorId, tx }) =>
-    tx
+// The full Order log (docs/PRD.md §6.2) — filterable by customer, separate
+// from the Supplier's Purchase Queue and the Packing Queue, which each
+// look at order_items directly rather than orders.
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
+
+  const data = await withCurrentOrganization(async ({ organizationId, tx }) => {
+    const orderRows = await tx
       .select({
         id: orders.id,
-        customerName: orders.customerName,
-        quantity: orders.quantity,
-        productName: products.name,
-        sourceUrl: products.sourceUrl,
+        customerName: customers.name,
+        createdAt: orders.createdAt,
       })
       .from(orders)
-      .innerJoin(products, eq(orders.productId, products.id))
-      .where(and(eq(orders.vendorId, vendorId), eq(orders.status, "pending")))
-      .orderBy(asc(orders.createdAt)),
-  );
+      .innerJoin(customers, eq(customers.id, orders.customerId))
+      .where(
+        q
+          ? and(eq(orders.organizationId, organizationId), ilike(customers.name, `%${q}%`))
+          : eq(orders.organizationId, organizationId),
+      )
+      .orderBy(desc(orders.createdAt))
+      .limit(50);
+
+    const orderIds = orderRows.map((o) => o.id);
+    const itemRows =
+      orderIds.length === 0
+        ? []
+        : await tx
+            .select({ orderId: orderItems.orderId, status: orderItems.status })
+            .from(orderItems)
+            .where(inArray(orderItems.orderId, orderIds));
+
+    const statusesByOrder = new Map<string, string[]>();
+    for (const row of itemRows) {
+      const list = statusesByOrder.get(row.orderId) ?? [];
+      list.push(row.status);
+      statusesByOrder.set(row.orderId, list);
+    }
+
+    return orderRows.map((order) => ({ ...order, itemStatuses: statusesByOrder.get(order.id) ?? [] }));
+  });
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Today&apos;s Pending Orders</h1>
+        <h1 className="text-lg font-semibold">Orders</h1>
         <Link
           href="/orders/new"
           className="min-h-11 rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white"
@@ -35,54 +62,47 @@ export default async function OrdersPage() {
         </Link>
       </div>
 
-      {pendingOrders.length === 0 ? (
-        <p className="text-sm text-neutral-500">
-          No pending orders. New orders Customer Service logs will show up here.
-        </p>
+      <form method="get" className="flex gap-2">
+        <input
+          name="q"
+          defaultValue={q ?? ""}
+          placeholder="Search by customer…"
+          className={fieldInputClass}
+        />
+        <button type="submit" className="min-h-11 shrink-0 rounded-md border border-neutral-300 px-3 text-sm">
+          Search
+        </button>
+      </form>
+
+      {data.length === 0 ? (
+        <p className="text-sm text-neutral-500">No orders yet.</p>
       ) : (
-        <ul className="space-y-3">
-          {pendingOrders.map((order) => (
-            <li key={order.id} className="rounded-lg border border-neutral-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{order.productName}</p>
-                  <p className="text-sm text-neutral-500">
-                    {order.customerName} · qty {order.quantity}
-                  </p>
-                  {order.sourceUrl && (
-                    <a
-                      href={order.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-blue-600 underline"
-                    >
-                      Open listing
-                    </a>
-                  )}
-                </div>
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-                  <form action={markPurchasedAction.bind(null, order.id)}>
-                    <button
-                      type="submit"
-                      className="min-h-11 w-full rounded-md bg-green-600 px-3 text-sm font-medium text-white"
-                    >
-                      Mark Purchased
-                    </button>
-                  </form>
-                  <form action={cancelOrderAction.bind(null, order.id)}>
-                    <button
-                      type="submit"
-                      className="min-h-11 w-full rounded-md border border-neutral-300 px-3 text-sm font-medium"
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                </div>
-              </div>
+        <ul className="space-y-2">
+          {data.map((order) => (
+            <li key={order.id}>
+              <Link
+                href={`/orders/${order.id}`}
+                className="block rounded-lg border border-neutral-200 p-4"
+              >
+                <p className="font-medium">{order.customerName}</p>
+                <p className="text-sm text-neutral-500">
+                  {order.itemStatuses.length === 0
+                    ? "no items yet"
+                    : summarizeStatuses(order.itemStatuses)}
+                </p>
+              </Link>
             </li>
           ))}
         </ul>
       )}
     </div>
   );
+}
+
+function summarizeStatuses(statuses: string[]): string {
+  const counts = new Map<string, number>();
+  for (const status of statuses) counts.set(status, (counts.get(status) ?? 0) + 1);
+  return Array.from(counts.entries())
+    .map(([status, count]) => `${count} ${status}`)
+    .join(", ");
 }

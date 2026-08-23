@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .neon
+
+# Claude Code worktrees (created for /prototype, etc.) — the branches they
+# commit to are the durable artifact, not this checkout.
+.claude/worktrees/
