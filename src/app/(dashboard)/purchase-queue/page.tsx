@@ -1,6 +1,6 @@
-import { and, eq, ilike, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, sql } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
-import { orderItems, products } from "@/db/schema";
+import { orderItems, products, productImages } from "@/db/schema";
 import { fieldInputClass } from "@/components/form-field";
 import { batchMarkPurchasedAction } from "./actions";
 
@@ -15,13 +15,12 @@ export default async function PurchaseQueuePage({
 }) {
   const { q } = await searchParams;
 
-  const groups = await withCurrentOrganization(({ organizationId, tx }) =>
-    tx
+  const groups = await withCurrentOrganization(async ({ organizationId, tx }) => {
+    const rows = await tx
       .select({
         productId: products.id,
         productName: products.name,
         sourceUrl: products.sourceUrl,
-        sourceMarketplace: products.sourceMarketplace,
         totalQuantity: sql<number>`sum(${orderItems.quantity})`.mapWith(Number),
         orderCount: sql<number>`count(distinct ${orderItems.orderId})`.mapWith(Number),
       })
@@ -36,8 +35,27 @@ export default async function PurchaseQueuePage({
             )
           : and(eq(orderItems.organizationId, organizationId), eq(orderItems.status, "pending")),
       )
-      .groupBy(products.id, products.name, products.sourceUrl, products.sourceMarketplace),
-  );
+      .groupBy(products.id, products.name, products.sourceUrl);
+
+    const productIds = rows.map((row) => row.productId);
+    const images =
+      productIds.length === 0
+        ? []
+        : await tx
+            .select({ productId: productImages.productId, url: productImages.url })
+            .from(productImages)
+            .where(inArray(productImages.productId, productIds))
+            .orderBy(asc(productImages.sortOrder));
+
+    const primaryImageByProduct = new Map<string, string>();
+    for (const image of images) {
+      if (!primaryImageByProduct.has(image.productId)) {
+        primaryImageByProduct.set(image.productId, image.url);
+      }
+    }
+
+    return rows.map((row) => ({ ...row, imageUrl: primaryImageByProduct.get(row.productId) }));
+  });
 
   return (
     <div className="space-y-4">
@@ -62,22 +80,32 @@ export default async function PurchaseQueuePage({
           {groups.map((group) => (
             <li key={group.productId} className="rounded-lg border border-neutral-200 p-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{group.productName}</p>
-                  <p className="text-sm text-neutral-500">
-                    qty {group.totalQuantity} across {group.orderCount}{" "}
-                    {group.orderCount === 1 ? "order" : "orders"}
-                  </p>
-                  {group.sourceUrl && (
-                    <a
-                      href={group.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-blue-600 underline"
-                    >
-                      Open on {group.sourceMarketplace ?? "marketplace"}
-                    </a>
+                <div className="flex min-w-0 gap-3">
+                  {group.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={group.imageUrl}
+                      alt=""
+                      className="h-14 w-14 shrink-0 rounded-md object-cover"
+                    />
                   )}
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{group.productName}</p>
+                    <p className="text-sm text-neutral-500">
+                      qty {group.totalQuantity} across {group.orderCount}{" "}
+                      {group.orderCount === 1 ? "order" : "orders"}
+                    </p>
+                    {group.sourceUrl && (
+                      <a
+                        href={group.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm text-blue-600 underline"
+                      >
+                        Open listing
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <form action={batchMarkPurchasedAction.bind(null, group.productId)} className="shrink-0">
                   <button

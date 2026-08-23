@@ -16,7 +16,7 @@ export default async function NewOrderPage({
 
   const matches = await withCurrentOrganization(({ organizationId, tx }) =>
     tx
-      .select({ id: customers.id, name: customers.name, contact: customers.contact })
+      .select({ id: customers.id, name: customers.name, phone: customers.phone })
       .from(customers)
       .where(
         q
@@ -49,8 +49,7 @@ export default async function NewOrderPage({
             <option value="">Select a customer…</option>
             {matches.map((customer) => (
               <option key={customer.id} value={customer.id}>
-                {customer.name}
-                {customer.contact ? ` (${customer.contact})` : ""}
+                {customer.name} ({customer.phone})
               </option>
             ))}
           </select>
@@ -62,8 +61,11 @@ export default async function NewOrderPage({
             <Field label="Name">
               <input name="newCustomerName" className={fieldInputClass} />
             </Field>
-            <Field label="Contact (phone, social handle, etc.)">
-              <input name="newCustomerContact" className={fieldInputClass} />
+            <Field label="Phone number">
+              <input name="newCustomerPhone" type="tel" className={fieldInputClass} />
+            </Field>
+            <Field label="Address">
+              <input name="newCustomerAddress" className={fieldInputClass} />
             </Field>
           </div>
         </details>

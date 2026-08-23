@@ -8,6 +8,16 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 // 16 runs Proxy on the Node.js runtime by default, so a DB call would work
 // here now — this split is for separation of concerns, not a runtime
 // limitation.)
+//
+// Deliberately does NOT bounce an already-logged-in visitor away from
+// /login — that used to live here, keyed on cookie presence, and it caused
+// a real redirect loop: a *stale* cookie (present, but no longer matching
+// a session — e.g. after a DB reset) is "logged in" by this cheap check
+// but not by requireUser()'s real one, so the two sides disagreed and
+// bounced the browser between / and /login forever. The login page does
+// that bounce itself now, using the same real check requireUser() uses, so
+// there's exactly one source of truth for "is this session actually
+// valid" instead of two that can disagree.
 export function proxy(request: NextRequest) {
   const hasSessionCookie = request.cookies.has(SESSION_COOKIE_NAME);
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
@@ -16,10 +26,6 @@ export function proxy(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
-  }
-
-  if (hasSessionCookie && isLoginPage) {
-    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();

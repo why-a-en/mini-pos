@@ -3,22 +3,47 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
 import { withCurrentOrganization } from "@/lib/tenancy";
-import { products, modifiers, modifierOptions, productModifierOptions } from "@/db/schema";
+import {
+  products,
+  productImages,
+  modifiers,
+  modifierOptions,
+  productModifierOptions,
+} from "@/db/schema";
+import { getUploadUrl, buildImageKey } from "@/lib/storage";
 
-const MARKETPLACES = ["lazada", "tiktok_shop", "other"] as const;
-type Marketplace = (typeof MARKETPLACES)[number];
-
-function parseMarketplace(value: string): Marketplace | null {
-  return (MARKETPLACES as readonly string[]).includes(value) ? (value as Marketplace) : null;
+/**
+ * Hands the browser a short-lived URL it can PUT an image to directly
+ * (src/lib/storage.ts) — called from the client image-upload widget before
+ * the main product form is submitted, not as a form action itself.
+ */
+export async function getProductImageUploadUrlAction(filename: string, contentType: string) {
+  const user = await requireUser();
+  const key = buildImageKey(user.organizationId, "product", filename);
+  return getUploadUrl(key, contentType);
 }
 
+/**
+ * Creates the product, its images (already uploaded to R2 by the time this
+ * runs — see getProductImageUploadUrlAction), and — visibly on the same
+ * form, not a separate step — an optional first Modifier with its Options.
+ * Attaching more Modifiers or picking from existing ones still happens on
+ * the product's own page after this (docs/PRD.md §6.1); this covers the
+ * common single-modifier case without leaving the creation form at all.
+ */
 export async function createProductAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const sourceMarketplace = parseMarketplace(String(formData.get("sourceMarketplace") ?? ""));
   const sourceUrl = String(formData.get("sourceUrl") ?? "").trim() || null;
   const price = String(formData.get("price") ?? "").trim() || null;
+  const imageUrls = formData.getAll("imageUrls").map(String).filter(Boolean);
+  const modifierName = String(formData.get("modifierName") ?? "").trim();
+  const modifierOptionValues = String(formData.get("modifierOptions") ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
 
   if (!name || !description) {
     throw new Error("Name and description are required.");
@@ -27,8 +52,47 @@ export async function createProductAction(formData: FormData) {
   const productId = await withCurrentOrganization(async ({ organizationId, userId, tx }) => {
     const [product] = await tx
       .insert(products)
-      .values({ organizationId, name, description, sourceMarketplace, sourceUrl, price, createdBy: userId })
+      .values({ organizationId, name, description, sourceUrl, price, createdBy: userId })
       .returning({ id: products.id });
+
+    if (imageUrls.length > 0) {
+      await tx.insert(productImages).values(
+        imageUrls.map((url, index) => ({
+          organizationId,
+          productId: product.id,
+          url,
+          sortOrder: index,
+        })),
+      );
+    }
+
+    if (modifierName && modifierOptionValues.length > 0) {
+      const [modifier] = await tx
+        .insert(modifiers)
+        .values({ organizationId, name: modifierName })
+        .returning({ id: modifiers.id });
+
+      const insertedOptions = await tx
+        .insert(modifierOptions)
+        .values(
+          modifierOptionValues.map((value, index) => ({
+            organizationId,
+            modifierId: modifier.id,
+            value,
+            sortOrder: index,
+          })),
+        )
+        .returning({ id: modifierOptions.id });
+
+      await tx.insert(productModifierOptions).values(
+        insertedOptions.map((option) => ({
+          organizationId,
+          productId: product.id,
+          modifierOptionId: option.id,
+        })),
+      );
+    }
+
     return product.id;
   });
 
@@ -50,8 +114,8 @@ export async function setProductStatusAction(productId: string, status: "active"
 /**
  * Creates a brand-new Modifier (e.g. "Color") with its initial Options
  * (comma-separated, e.g. "Black, White, Red") and immediately attaches all
- * of them to `productId` — the "create a modifier without leaving the
- * product form" flow from docs/PRD.md §5.2.
+ * of them to `productId` — for adding a *second* (or later) Modifier from
+ * the product's own page, after creation.
  */
 export async function createModifierAction(formData: FormData) {
   const productId = String(formData.get("productId") ?? "");

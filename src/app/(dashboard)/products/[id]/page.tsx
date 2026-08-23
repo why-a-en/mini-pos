@@ -1,7 +1,13 @@
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
-import { products, modifiers, modifierOptions, productModifierOptions } from "@/db/schema";
+import {
+  products,
+  productImages,
+  modifiers,
+  modifierOptions,
+  productModifierOptions,
+} from "@/db/schema";
 import { Field, fieldInputClass } from "@/components/form-field";
 import {
   attachModifierOptionsAction,
@@ -20,6 +26,12 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       .where(and(eq(products.id, id), eq(products.organizationId, organizationId)))
       .limit(1);
     if (!product) return null;
+
+    const images = await tx
+      .select({ id: productImages.id, url: productImages.url })
+      .from(productImages)
+      .where(eq(productImages.productId, id))
+      .orderBy(asc(productImages.sortOrder));
 
     // Every modifier in the org, each with its options and whether that
     // option is already attached to this product — enough to render both
@@ -59,11 +71,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       });
     }
 
-    return { product, modifierGroups: Array.from(modifierMap.entries()) };
+    return { product, images, modifierGroups: Array.from(modifierMap.entries()) };
   });
 
   if (!data) notFound();
-  const { product, modifierGroups } = data;
+  const { product, images, modifierGroups } = data;
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -76,6 +88,19 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             </button>
           </form>
         </div>
+        {images.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto py-1">
+            {images.map((image) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={image.id}
+                src={image.url}
+                alt=""
+                className="h-20 w-20 shrink-0 rounded-md object-cover"
+              />
+            ))}
+          </div>
+        )}
         <p className="text-sm text-neutral-600">{product.description}</p>
         {product.sourceUrl && (
           <a
@@ -84,7 +109,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             rel="noreferrer"
             className="text-sm text-blue-600 underline"
           >
-            View on {product.sourceMarketplace ?? "marketplace"}
+            View listing
           </a>
         )}
       </div>

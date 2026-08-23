@@ -18,11 +18,6 @@ import { sql } from "drizzle-orm";
 export const organizationStatusEnum = pgEnum("organization_status", ["active", "suspended"]);
 export const userRoleEnum = pgEnum("user_role", ["customer_service", "supplier"]);
 export const productStatusEnum = pgEnum("product_status", ["active", "archived"]);
-export const sourceMarketplaceEnum = pgEnum("source_marketplace", [
-  "lazada",
-  "tiktok_shop",
-  "other",
-]);
 // See docs/adr/0001-order-item-lifecycle-and-packing.md for why this has
 // five stages, not three, and why cancelled is reachable from all of them.
 export const orderItemStatusEnum = pgEnum("order_item_status", [
@@ -109,7 +104,13 @@ export const customers = pgTable(
       .notNull()
       .references(() => organizations.id),
     name: text("name").notNull(),
-    contact: text("contact"),
+    phone: text("phone").notNull(),
+    // Nullable at the DB level even though the create-customer form
+    // requires it (docs/PRD.md §5.3) — a handful of test customers
+    // predate this field. Every customer created going forward will have
+    // one; this just avoids inventing a fake backfill value for the ones
+    // that don't.
+    address: text("address"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -130,9 +131,9 @@ export const products = pgTable(
       .references(() => organizations.id),
     name: text("name").notNull(),
     description: text("description").notNull(),
-    sourceMarketplace: sourceMarketplaceEnum("source_marketplace"),
     // The highest-leverage field — see docs/PRD.md §9.1: lets the Supplier
-    // skip manual image search entirely when populated.
+    // skip manual image search entirely when populated. No separate
+    // "source marketplace" field — the URL alone is enough.
     sourceUrl: text("source_url"),
     price: numeric("price", { precision: 12, scale: 2 }),
     status: productStatusEnum("status").notNull().default("active"),

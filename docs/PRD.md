@@ -66,7 +66,7 @@ tool where:
 | Order Item lifecycle | **`Pending → Purchased → Received → Packed → Completed`**, with `Cancelled` reachable from any stage except Completed. See [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md) for why this isn't the "minimal" lifecycle the first draft of this PRD assumed. |
 | Order structure | An **Order** can hold **multiple Products**, each its own **Order Item** (Product + modifier selection + quantity), each with its **own** status — not one status per Order. Every Order Item must reference a catalog Product; no ad-hoc/one-off items without a Product record. |
 | Modifiers | **Structured, not free text.** A Modifier (e.g. "Color") is a reusable, Organization-wide catalog with a global list of Options; each Product picks the subset of a Modifier's Options that apply to it. |
-| Customer | **A real, searchable entity** (name + contact) — not free text re-typed on every order. |
+| Customer | **A real, searchable entity** (name + phone + address) — not free text re-typed on every order. |
 | Roles & permissions | **Two real roles** (Customer Service, Supplier), each with its own default views — **not** a granular permission system. Both roles can technically perform any action; the split is about what you land on, not what you're blocked from. |
 | Account creation | **Out of band for MVP.** No in-app "add a teammate" screen — new logins are created via a script, run by whoever's setting the account up. |
 | Customer-facing access | **None.** Customers stay in chat/social media; they are not platform users in the MVP (see idea in §9). |
@@ -109,8 +109,7 @@ by many Order Items.
 | Name | Required |
 | Description | Required |
 | Images | One or more |
-| Source marketplace | Lazada / TikTok Shop / Other |
-| Source URL | **Link to the exact listing**, if known — see §9.1, the single highest-leverage field on this record |
+| Source URL | **Link to the exact listing**, if known — see §9.1, the single highest-leverage field on this record. No separate marketplace field; the URL alone is enough. |
 | Modifiers | Which of the Organization's Modifiers apply to this Product, and which of each Modifier's Options — e.g. this product uses "Color" and offers Black/White (out of a larger global Color palette) |
 | Price (customer-facing, MMK) | Optional for MVP |
 | Status | Active / Archived — Archived products drop out of the order-creation picker but existing Order Items referencing them are untouched; reversible |
@@ -135,7 +134,8 @@ A real, searchable entity — not free text re-typed on every order.
 | Field | Notes |
 |---|---|
 | Name | Required |
-| Contact | Phone, social handle, etc. |
+| Phone number | Required |
+| Address | Required — needed to actually ship a Purchased item to them |
 | Created at | |
 
 Created inline while logging an Order (search-or-create), the same
@@ -183,10 +183,13 @@ once without disturbing unrelated Items.
 ## 6. Features (MVP)
 
 ### 6.1 Product Management (Customer Service)
-- Create a product: name, description, images, source marketplace,
-  source URL, price.
-- Attach Modifiers to it — pick from existing ones, or create a new
-  Modifier (and its Options) inline without leaving the form.
+- Create a product: name, description, images, source URL, price — and,
+  right on the same form, an optional first Modifier (name + options).
+  Uploaded images go straight to storage from the browser, not through
+  the server.
+- Attach more Modifiers to it — pick from existing ones, or create a new
+  Modifier (and its Options) inline — from the product's own page after
+  creation.
 - Edit / archive a product.
 - List/search products (by name, status).
 

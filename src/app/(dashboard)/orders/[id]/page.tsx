@@ -24,7 +24,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         notes: orders.notes,
         createdAt: orders.createdAt,
         customerName: customers.name,
-        customerContact: customers.contact,
+        customerPhone: customers.phone,
+        customerAddress: customers.address,
       })
       .from(orders)
       .innerJoin(customers, eq(customers.id, orders.customerId))
@@ -77,7 +78,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     <div className="mx-auto max-w-md space-y-6">
       <div className="space-y-1">
         <h1 className="text-lg font-semibold">{order.customerName}</h1>
-        {order.customerContact && <p className="text-sm text-neutral-500">{order.customerContact}</p>}
+        <p className="text-sm text-neutral-500">{order.customerPhone}</p>
+        {order.customerAddress && <p className="text-sm text-neutral-500">{order.customerAddress}</p>}
         {order.notes && <p className="text-sm text-neutral-600">{order.notes}</p>}
       </div>
 

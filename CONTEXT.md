@@ -24,7 +24,8 @@ _Avoid_: Buyer, purchaser. Not to be confused with Organization — a
 near-synonym in plain English, but a distinct concept here.
 
 **Customer**: A real, searchable person who places Orders — a first-class
-entity (name + contact), not free text on the Order.
+entity (name, phone, address), not free text on the Order. Address is
+required: it's what lets a Completed item actually get shipped to them.
 _Avoid_: Client, account.
 
 **Product**: A catalog entry for something being resold — created once by

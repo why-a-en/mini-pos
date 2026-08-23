@@ -61,14 +61,26 @@ export async function getSessionUser() {
 
   if (!row) return null;
   if (row.session.expiresAt.getTime() < Date.now()) {
-    await invalidateSession();
+    // DB row only — not the cookie. getSessionUser() runs from Server
+    // Component renders (layouts/pages) as well as Server Actions, and
+    // Next.js throws if `cookies()` is mutated outside a Server
+    // Action/Route Handler. The stale cookie is harmless to leave in place:
+    // it just won't match a session row next time either, and gets
+    // overwritten the moment the user logs in again (createSession sets a
+    // fresh one). See src/proxy.ts for the related redirect-loop this
+    // distinction was fixing.
+    await db.delete(sessions).where(eq(sessions.tokenHash, tokenHash));
     return null;
   }
 
   return row.user;
 }
 
-/** Deletes the current session row (if any) and clears the cookie. */
+/**
+ * Deletes the current session row (if any) and clears the cookie. Only
+ * safe to call from a Server Action or Route Handler (logout()) — never
+ * from a plain Server Component render.
+ */
 export async function invalidateSession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;

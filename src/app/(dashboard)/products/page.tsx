@@ -9,7 +9,6 @@ export default async function ProductsPage() {
       .select({
         id: products.id,
         name: products.name,
-        sourceMarketplace: products.sourceMarketplace,
         status: products.status,
       })
       .from(products)
@@ -40,9 +39,7 @@ export default async function ProductsPage() {
                 className="block rounded-lg border border-neutral-200 p-4"
               >
                 <p className="font-medium">{product.name}</p>
-                <p className="text-sm text-neutral-500">
-                  {product.sourceMarketplace ?? "—"} · {product.status}
-                </p>
+                <p className="text-sm text-neutral-500">{product.status}</p>
               </Link>
             </li>
           ))}

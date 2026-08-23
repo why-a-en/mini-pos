@@ -16,11 +16,18 @@ import { orders, orderItems, orderItemModifiers, customers } from "@/db/schema";
 export async function createOrderAction(formData: FormData) {
   const existingCustomerId = String(formData.get("existingCustomerId") ?? "").trim() || null;
   const newCustomerName = String(formData.get("newCustomerName") ?? "").trim();
-  const newCustomerContact = String(formData.get("newCustomerContact") ?? "").trim() || null;
+  const newCustomerPhone = String(formData.get("newCustomerPhone") ?? "").trim();
+  const newCustomerAddress = String(formData.get("newCustomerAddress") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
   if (!existingCustomerId && !newCustomerName) {
     throw new Error("Pick an existing customer or enter a name for a new one.");
+  }
+  if (newCustomerName && !newCustomerPhone) {
+    throw new Error("Phone number is required for a new customer.");
+  }
+  if (newCustomerName && !newCustomerAddress) {
+    throw new Error("Address is required for a new customer.");
   }
 
   const orderId = await withCurrentOrganization(async ({ organizationId, userId, tx }) => {
@@ -28,7 +35,12 @@ export async function createOrderAction(formData: FormData) {
     if (newCustomerName) {
       const [customer] = await tx
         .insert(customers)
-        .values({ organizationId, name: newCustomerName, contact: newCustomerContact })
+        .values({
+          organizationId,
+          name: newCustomerName,
+          phone: newCustomerPhone,
+          address: newCustomerAddress,
+        })
         .returning({ id: customers.id });
       customerId = customer.id;
     }

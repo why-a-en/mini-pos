@@ -58,7 +58,8 @@ erDiagram
         uuid id PK
         uuid organization_id FK
         text name
-        text contact
+        text phone
+        text address
         timestamptz created_at
     }
     PRODUCTS {
@@ -66,7 +67,6 @@ erDiagram
         uuid organization_id FK
         text name
         text description
-        text source_marketplace
         text source_url
         numeric price
         text status
@@ -138,7 +138,6 @@ erDiagram
 | `organization_status` | `active`, `suspended` | `organizations.status` |
 | `user_role` | `customer_service`, `supplier` | `users.role` |
 | `product_status` | `active`, `archived` | `products.status` |
-| `source_marketplace` | `lazada`, `tiktok_shop`, `other` | `products.source_marketplace` |
 | `order_item_status` | `pending`, `purchased`, `received`, `packed`, `completed`, `cancelled` | `order_items.status` |
 
 No `admin` role — PRD §4 deliberately has no in-app account management
@@ -194,7 +193,8 @@ A real, searchable entity (PRD §5.3) — not free text on the order.
 | `id` | `uuid` PK | |
 | `organization_id` | `uuid` FK → `organizations.id` | |
 | `name` | `text` NOT NULL | |
-| `contact` | `text` | phone, social handle, etc. |
+| `phone` | `text` NOT NULL | |
+| `address` | `text` | nullable at the DB level only for a handful of test customers that predate this field — required on the create-customer form for everyone going forward; needed to actually ship a Purchased item |
 | `created_at` | `timestamptz` | default `now()` |
 
 **Index:** `(organization_id, name)` — powers search-or-create while
@@ -209,8 +209,7 @@ The catalog entry.
 | `organization_id` | `uuid` FK → `organizations.id` | |
 | `name` | `text` NOT NULL | |
 | `description` | `text` NOT NULL | |
-| `source_marketplace` | `source_marketplace` | nullable until known |
-| `source_url` | `text` | nullable — the highest-leverage field, PRD §9.1 |
+| `source_url` | `text` | nullable — the highest-leverage field, PRD §9.1. No separate marketplace column; the URL alone is enough. |
 | `price` | `numeric(12,2)` | nullable; MMK, customer-facing (PRD §5.1) |
 | `status` | `product_status` | default `active` |
 | `created_by` | `uuid` FK → `users.id` | |
