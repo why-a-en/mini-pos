@@ -1,0 +1,26 @@
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Mobile-first frame: the app is designed at 375px and never gets a wider
+     content column than 520px. */
+  --gutter: var(--space-5);
+  --content-max: 520px;
+
+  /* Every tappable target clears 44px. */
+  --tap-min: 44px;
+  --control-h-sm: 34px;
+  --control-h-md: 44px;
+  --control-h-lg: 52px;
+
+  --bar-top-h: 56px;
+  --bar-bottom-h: 62px;
+}

@@ -44,3 +44,19 @@ export async function requireUser() {
   if (!user) redirect("/login");
   return user;
 }
+
+// Display-only — the DB role itself stays "customer_service" (db/schema.ts's
+// userRoleEnum, docs/DATA_MODEL.md); this is just what shows up in the UI
+// ("Support Agent" reads better there, and leaves room for a role list that
+// isn't just this-or-Supplier once a third role — Owner — actually exists).
+// A Record, not a ternary: adding "owner" to the enum later makes this a
+// compile error until the map is extended too, instead of silently falling
+// through to the wrong label the way an `=== "supplier" ? … : …` chain would.
+const ROLE_LABELS: Record<"customer_service" | "supplier", string> = {
+  customer_service: "Support Agent",
+  supplier: "Supplier",
+};
+
+export function roleLabel(role: keyof typeof ROLE_LABELS): string {
+  return ROLE_LABELS[role];
+}

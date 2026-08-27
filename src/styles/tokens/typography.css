@@ -1,0 +1,38 @@
+:root {
+  /* Display — Public Sans at its heaviest, tightened hard. Headline sizes only,
+     never below 20px. The aesthetic comes from weight and tracking, not from a
+     second family. */
+  --type-display-lg:   800 42px/1.02 var(--font-display);
+  --type-display-md:   800 30px/1.06 var(--font-display);
+  --type-display-sm:   700 22px/1.14 var(--font-display);
+  --type-display-tracking: -0.04em;
+
+  /* Screen titles in app chrome. Lighter and looser than the display cut, which
+     is reserved for empty-state statements and document headings. */
+  --type-screen-title: 700 20px/1.25 var(--font-ui);
+  --type-screen-title-tracking: -0.02em;
+
+  /* UI — Public Sans. Everything a thumb reads. */
+  --type-title:        600 17px/1.30 var(--font-ui);
+  --type-body:         400 15px/1.50 var(--font-ui);
+  --type-body-strong:  600 15px/1.45 var(--font-ui);
+  --type-small:        400 13px/1.45 var(--font-ui);
+  --type-small-strong: 600 13px/1.40 var(--font-ui);
+
+  /* Mono — Martian Mono. Micro-labels, eyebrows, codes. Uppercase, wide.
+     Never used for paragraphs; it is a texture, not a reading face. */
+  --type-label:        500 10px/1.20 var(--font-mono);
+  --type-label-tracking: 0.10em;
+  --type-code:         400 12px/1.40 var(--font-mono);
+
+  /* Metric — the ONE treatment for every number in the product: stat tiles,
+     queue totals, counters, quantities. Heavy tightened sans, never the display
+     serif; these are instrument numbers meant to be scanned, and mixing two
+     numeric voices makes a screen look unresolved. */
+  --type-metric-xl:    700 40px/0.98 var(--font-ui);
+  --type-metric-lg:    700 30px/1.00 var(--font-ui);
+  --type-metric-md:    700 22px/1.02 var(--font-ui);
+  --type-metric-tracking: -0.035em;
+
+  --numeric-tabular: tabular-nums;
+}

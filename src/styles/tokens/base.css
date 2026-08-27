@@ -1,0 +1,145 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-body);
+  font: var(--type-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--accent-text); text-decoration: none; }
+a:hover { color: var(--accent-press); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Nav links (tab bar, etc.) carry their own active-state affordance (an
+   accent bar/icon weight, not underlined text) — inline styles can't
+   override the global a:hover rule above since it's a real CSS rule, not
+   just a default, so this has to live here too. */
+.ds-nav-link,
+.ds-nav-link:hover {
+  text-decoration: none;
+}
+
+h1, h2, h3 { margin: 0; color: var(--text-strong); letter-spacing: var(--type-display-tracking); }
+h1 { font: var(--type-display-lg); }
+h2 { font: var(--type-display-md); }
+h3 { font: var(--type-display-sm); }
+
+button, input, select, textarea { font-family: inherit; }
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+.ds-label {
+  font: var(--type-label);
+  letter-spacing: var(--type-label-tracking);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Iconography ────────────────────────────────────────────────────────────
+   Lucide ships at a 2px stroke; this system documents 1.75. Every surface that
+   calls lucide.createIcons() gets the corrected weight from here, so the demo,
+   the component cards and the app kit cannot drift from Icon.jsx (which sets
+   the same value on the React path). Icons are always currentColor. */
+svg.lucide {
+  stroke-width: 1.75;
+  stroke: currentColor;
+  fill: none;
+  width: var(--icon-size, 18px);
+  height: var(--icon-size, 18px);
+  flex: 0 0 auto;
+}
+
+/* ── Density primitives ─────────────────────────────────────────────────────
+   Four devices that let a monochrome interface signal state and life. They are
+   utilities rather than components because they attach to anything: a chip, a
+   row, a card, a panel. */
+
+/* Destructive / cancelled marking. Put this on an edge band INSIDE the element,
+   never on the element that holds the text. */
+.ds-hatch { background-image: var(--pattern-hatch); }
+.ds-hatch-loose { background-image: var(--pattern-hatch-loose); }
+
+/* Material for large empty surfaces. Absolutely positioned inside a relative
+   parent; every sibling that holds content needs position: relative to sit
+   above it. The pattern is theme-aware — halftone dots on paper, a fine weave on
+   charcoal — so the same markup gives each theme its own material. */
+.ds-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--pattern-grain);
+  background-size: var(--pattern-grain-size);
+  opacity: var(--pattern-grain-opacity);
+}
+/* Preferred form for a SURFACE that should wear material: a pseudo-element, so
+   there is no node to forget and no wrapper needed around the content. Requires
+   nothing on the children — z-index:-1 paints it above the surface background
+   and below the content. Use .ds-grain only where a pseudo-element is taken. */
+.ds-grain-surface { position: relative; isolation: isolate; }
+.ds-grain-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: var(--pattern-grain);
+  background-size: var(--pattern-grain-size);
+  opacity: var(--pattern-grain-opacity);
+}
+
+/* Deprecated alias: .ds-raster forced the paper dot in both themes. */
+.ds-raster { position: absolute; inset: 0; pointer-events: none;
+  background-image: var(--pattern-raster); background-size: var(--pattern-raster-size); opacity: 0.5; }
+
+/* Presence. A hairline that breathes, in place of a coloured status dot: it
+   reads identically for a colourblind user and in greyscale print. Pair with
+   the avatar shape rule — circle for a person, squircle for an agent. */
+.ds-presence {
+  display: block;
+  width: 42px;
+  height: 1px;
+  background: currentColor;
+  animation: ds-breathe 2.4s var(--ease-standard) infinite;
+}
+.ds-presence[data-idle] { animation: none; opacity: 0.35; }
+
+/* Work in progress. One pass of light across the surface that is working —
+   not a spinner beside it, and not a grey skeleton that reads as a bug. */
+.ds-working { position: relative; overflow: hidden; }
+.ds-working::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  opacity: 0.07;
+  animation: ds-sweep 1.9s linear infinite;
+}
+
+/* Figures. Counts are witnessed, not just reported: the digit column rolls to
+   its new value. Set --ds-digit to the value and --ds-digit-h to the line box. */
+.ds-figure {
+  display: flex;
+  overflow: hidden;
+  height: var(--ds-digit-h, 1em);
+  font-variant-numeric: tabular-nums;
+}
+.ds-figure > * {
+  display: flex;
+  flex-direction: column;
+  transform: translateY(calc(var(--ds-digit, 0) * var(--ds-digit-h, 1em) * -1));
+  transition: transform var(--dur-sheet) var(--ease-standard);
+}
+.ds-figure > * > * { height: var(--ds-digit-h, 1em); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-presence, .ds-working::after { animation: none; }
+  .ds-presence { opacity: 0.8; }
+  .ds-figure > * { transition: none; }
+}

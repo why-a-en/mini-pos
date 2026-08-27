@@ -20,12 +20,16 @@
     "argon2": "^0.45.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.33.0",
     "next": "16.3.2",
     "nuqs": "^2.10.0",
+    "radix-ui": "^1.6.7",
     "react": "19.2.8",
+    "react-day-picker": "^10.0.1",
     "react-dom": "19.2.8",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
@@ -39,5 +43,22 @@
     "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "description": "Product catalog and daily order coordination for Customer Service and Suppliers — see [`docs/PRD.md`](./docs/PRD.md) for the full context on what this replaces and why.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/why-a-en/minipos.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/why-a-en/minipos/issues"
+  },
+  "homepage": "https://github.com/why-a-en/minipos#readme"
 }

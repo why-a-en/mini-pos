@@ -276,8 +276,12 @@ through this table — no separate `product_modifiers` table needed.)
 **Index:** UNIQUE `(product_id, modifier_option_id)`
 
 ### `orders`
-A Customer's request (PRD §5.4) — a **header only**. No status; see
-`order_items`.
+A Customer's request (PRD §5.4) — a **header only**. No per-item status
+lives here; see `order_items`. `placed_at` is the one exception: it's not a
+lifecycle status, just the draft/placed line — the order wizard writes a row
+as soon as a customer's picked (with however many items were added before
+the wizard was closed), and `placed_at` distinguishes "still being composed"
+from "handed off" without needing a full status column.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -288,6 +292,7 @@ A Customer's request (PRD §5.4) — a **header only**. No status; see
 | `notes` | `text` | nullable |
 | `created_by` | `uuid` FK → `users.id` | the Customer Service who logged it |
 | `created_at` | `timestamptz` | |
+| `placed_at` | `timestamptz` | nullable — null means still a draft |
 
 **Indexes:** `(organization_id, customer_id)`, `(organization_id, created_at)`
 
@@ -305,8 +310,8 @@ here, not on `orders`** — see
 | `product_id` | `uuid` FK → `products.id` NOT NULL | |
 | `quantity` | `int` NOT NULL | default `1` |
 | `status` | `order_item_status` NOT NULL | default `pending` |
-| `cancellation_reason` | `text` | nullable, set when status → `cancelled` |
-| `purchased_at` / `received_at` / `packed_at` / `completed_at` | `timestamptz` | nullable, set on each transition |
+| `cancellation_reason` | `text` | nullable, set when status → `cancelled`. A fixed sentinel string (`CANT_SOURCE_REASON` in `db/schema.ts`) marks the Purchase Queue's "Can't source" path specifically — that's how `/unsourced` finds only those, distinct from a Support-initiated cancel on the Order detail page |
+| `cancelled_at` / `purchased_at` / `received_at` / `packed_at` / `completed_at` | `timestamptz` | nullable, set on each transition — `cancelled_at` is what makes cancellation a soft delete rather than the row silently going stale with no record of when |
 | `created_at` | `timestamptz` | |
 
 **Indexes:**

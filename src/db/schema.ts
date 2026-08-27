@@ -29,6 +29,17 @@ export const orderItemStatusEnum = pgEnum("order_item_status", [
   "cancelled",
 ]);
 
+// A cancelled Order Item is a soft delete — the row stays (Order.notes,
+// Customer history, and every other stage's own timestamp below all still
+// reference it), it just drops out of every active view (Purchase Queue,
+// Parcels, the Order's own pending count). This sentinel is what lets the
+// dedicated /unsourced page find only the ones a Supplier gave up sourcing,
+// not every cancellation (Support can also cancel from the Order detail
+// page, for any other reason, via the same status). It's a fixed string set
+// by app code, not user-entered text, so exact-matching it is reliable —
+// still, always import this constant rather than retyping the literal.
+export const CANT_SOURCE_REASON = "Supplier couldn't source it";
+
 // RLS defense-in-depth (docs/DATA_MODEL.md §5): every tenant-scoped table
 // gets this same policy. withCheck is intentionally omitted — Postgres
 // falls back to using USING for INSERT/UPDATE checks too when WITH CHECK
@@ -253,6 +264,12 @@ export const orders = pgTable(
       .notNull()
       .references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Null = still a draft, composed via the order wizard (customer picked,
+    // zero or more items added) but not yet handed off — a draft's items
+    // don't need to be pending demand the Supplier acts on yet. Set once
+    // "Place order" is used; that's also the moment items start counting
+    // toward the Purchase Queue in practice (they're only inserted then).
+    placedAt: timestamp("placed_at", { withTimezone: true }),
   },
   (table) => [
     index("orders_organization_customer_idx").on(table.organizationId, table.customerId),
@@ -282,6 +299,7 @@ export const orderItems = pgTable(
     quantity: integer("quantity").notNull().default(1),
     status: orderItemStatusEnum("status").notNull().default("pending"),
     cancellationReason: text("cancellation_reason"),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     purchasedAt: timestamp("purchased_at", { withTimezone: true }),
     receivedAt: timestamp("received_at", { withTimezone: true }),
     packedAt: timestamp("packed_at", { withTimezone: true }),
@@ -296,7 +314,7 @@ export const orderItems = pgTable(
       table.productId,
       table.status,
     ),
-    // Powers the Packing Queue and general order-log filtering.
+    // Powers Parcels (the packing queue) and general order-log filtering.
     index("order_items_org_status_created_idx").on(
       table.organizationId,
       table.status,

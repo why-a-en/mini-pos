@@ -1,144 +1,242 @@
 @import "tailwindcss";
 
 /*
- * Material Design 3 tokens — color roles (m3.material.io/styles/color) and
- * motion (m3.material.io/styles/motion/easing-and-duration/tokens-specs).
+ * Design tokens — ported from the "Design System: Dual-Theme POS" Claude
+ * Design project (id e3d5c39a-1392-4fff-be41-668ead07d3eb), verbatim from its
+ * tokens/*.css except fonts: that project loads Public Sans + Martian Mono
+ * via a Google Fonts CSS @import, we load them via next/font/google instead
+ * (see layout.tsx) for the usual self-hosting/perf reasons, and alias the
+ * two font variables it expects below.
  *
- * Colors are Google's published M3 *baseline* scheme (seed #6750A4) — not
- * generated from a custom brand color. It's the same default Flutter's
- * Material 3 widgets ship with, which buys visual consistency with the
- * planned Flutter app for free. Swap to a brand seed color later by
- * regenerating this palette (Material Theme Builder, or
- * @material/material-color-utilities) — the token *names* below won't need
- * to change, only their values.
+ * Supersedes the earlier ad hoc Material 3 palette, brand-ink/brand-accent
+ * logo colors, and hand-rolled grain overlay that lived here before this
+ * project was found — all three are now covered by the real system.
+ *
+ * Imported into Tailwind's own `base` layer (not left unlayered) — base.css
+ * carries plain element rules (`a`, `h1..h3`, `button/input/...`) that set
+ * color/font-family, and per the CSS cascade-layers spec, unlayered CSS
+ * always wins over ANY `@layer` content regardless of specificity. Left
+ * unlayered, that `a { color: var(--accent-text) }` rule silently beat every
+ * Tailwind `text-*` class applied to a `<Link>`/`<a>` (e.g. CenterTabBar's
+ * Home button: `text-accent-ink` lost to `--accent-text`, which happens to
+ * equal `--accent` in dark mode — the icon painted the same colour as its
+ * own background). `layer(base)` sits below Tailwind's `utilities` layer, so
+ * a utility class on the same element wins as expected, and these rules
+ * still apply as sane defaults everywhere nothing overrides them.
  */
+@import "../styles/tokens/colors.css" layer(base);
+@import "../styles/tokens/typography.css" layer(base);
+@import "../styles/tokens/spacing.css" layer(base);
+@import "../styles/tokens/shape.css" layer(base);
+@import "../styles/tokens/motion.css" layer(base);
+@import "../styles/tokens/base.css" layer(base);
+
 :root {
-  /* md.sys.color — light scheme */
-  --md-sys-color-primary: #6750a4;
-  --md-sys-color-on-primary: #ffffff;
-  --md-sys-color-primary-container: #eaddff;
-  --md-sys-color-on-primary-container: #21005d;
-  --md-sys-color-secondary: #625b71;
-  --md-sys-color-on-secondary: #ffffff;
-  --md-sys-color-secondary-container: #e8def8;
-  --md-sys-color-on-secondary-container: #1d192b;
-  --md-sys-color-tertiary: #7d5260;
-  --md-sys-color-on-tertiary: #ffffff;
-  --md-sys-color-tertiary-container: #ffd8e4;
-  --md-sys-color-on-tertiary-container: #31111d;
-  --md-sys-color-error: #b3261e;
-  --md-sys-color-on-error: #ffffff;
-  --md-sys-color-error-container: #f9dedc;
-  --md-sys-color-on-error-container: #410e0b;
-  --md-sys-color-background: #fffbfe;
-  --md-sys-color-on-background: #1c1b1f;
-  --md-sys-color-surface: #fffbfe;
-  --md-sys-color-on-surface: #1c1b1f;
-  --md-sys-color-surface-variant: #e7e0ec;
-  --md-sys-color-on-surface-variant: #49454f;
-  --md-sys-color-outline: #79747e;
-  --md-sys-color-outline-variant: #cac4d0;
-  --md-sys-color-inverse-surface: #313033;
-  --md-sys-color-inverse-on-surface: #f4eff4;
-  --md-sys-color-inverse-primary: #d0bcff;
-
-  /* md.sys.motion — easing (CSS-safe single-curve approximations of M3's
-     compound "emphasized" path) and duration */
-  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-  --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
-  --md-sys-motion-easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
-  --md-sys-motion-easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
-  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
-  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
-
-  --md-sys-motion-duration-short1: 50ms;
-  --md-sys-motion-duration-short2: 100ms;
-  --md-sys-motion-duration-short3: 150ms;
-  --md-sys-motion-duration-short4: 200ms;
-  --md-sys-motion-duration-medium1: 250ms;
-  --md-sys-motion-duration-medium2: 300ms;
-  --md-sys-motion-duration-medium3: 350ms;
-  --md-sys-motion-duration-medium4: 400ms;
-  --md-sys-motion-duration-long1: 450ms;
-  --md-sys-motion-duration-long2: 500ms;
+  --font-ui: var(--font-public-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-ui);
+  --font-mono: var(--font-martian-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
-:root[data-theme="dark"],
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    /* md.sys.color — dark scheme */
-    --md-sys-color-primary: #d0bcff;
-    --md-sys-color-on-primary: #381e72;
-    --md-sys-color-primary-container: #4f378b;
-    --md-sys-color-on-primary-container: #eaddff;
-    --md-sys-color-secondary: #ccc2dc;
-    --md-sys-color-on-secondary: #332d41;
-    --md-sys-color-secondary-container: #4a4458;
-    --md-sys-color-on-secondary-container: #e8def8;
-    --md-sys-color-tertiary: #efb8c8;
-    --md-sys-color-on-tertiary: #492532;
-    --md-sys-color-tertiary-container: #633b48;
-    --md-sys-color-on-tertiary-container: #ffd8e4;
-    --md-sys-color-error: #f2b8b5;
-    --md-sys-color-on-error: #601410;
-    --md-sys-color-error-container: #8c1d18;
-    --md-sys-color-on-error-container: #f9dedc;
-    --md-sys-color-background: #1c1b1f;
-    --md-sys-color-on-background: #e6e1e5;
-    --md-sys-color-surface: #1c1b1f;
-    --md-sys-color-on-surface: #e6e1e5;
-    --md-sys-color-surface-variant: #49454f;
-    --md-sys-color-on-surface-variant: #cac4d0;
-    --md-sys-color-outline: #938f99;
-    --md-sys-color-outline-variant: #49454f;
-    --md-sys-color-inverse-surface: #e6e1e5;
-    --md-sys-color-inverse-on-surface: #313033;
-    --md-sys-color-inverse-primary: #6750a4;
+/*
+ * Touch feel. This is a phone app first (docs/TECH_STACK.md §6), and the
+ * default browser behaviours here are what make a web app feel like a web
+ * page instead of an app:
+ *
+ * - a grey/blue flash painted over the whole control on tap, which fires
+ *   *instead of* the system's own press states and can't be styled;
+ * - a ~300ms wait before click, reserved for a possible double-tap zoom, so
+ *   every button feels laggy;
+ * - long-press selecting the label text of a button you meant to hold.
+ *
+ * Every press response in this system is therefore its own :active rule on
+ * the component (a scale, a fill) — see §Press in CLAUDE.md — and these
+ * three defaults are cleared so those rules are what the user actually
+ * feels. Links are left selectable: a phone number or address in a row is
+ * worth copying.
+ */
+@layer base {
+  a,
+  button,
+  summary,
+  label,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  ::file-selector-button {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  button,
+  summary,
+  [role="button"],
+  ::file-selector-button {
+    -webkit-user-select: none;
+    user-select: none;
   }
 }
 
+/*
+ * Bridge — makes the token system above reachable as real Tailwind
+ * utilities (bg-surface-card, text-text-strong, shadow-raised, ease-standard,
+ * text-body …) instead of new shadcn defaults. `inline` because every value
+ * here is a `var()` back into a token that differs per [data-theme] — Tailwind
+ * must re-read it at each utility's use site, not bake in a build-time value.
+ * This block changes no rendered pixel by itself; it only wires names up.
+ * One-off/rare tokens (control heights, bar heights, content-max, tap-min)
+ * are deliberately NOT aliased here — reach them at the call site instead via
+ * Tailwind v4's `h-(--control-h-md)` custom-property shorthand.
+ */
 @theme inline {
-  --color-background: var(--md-sys-color-background);
-  --color-foreground: var(--md-sys-color-on-background);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* colors */
+  --color-surface-page: var(--surface-page);
+  --color-surface-card: var(--surface-card);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-invert: var(--surface-invert);
 
-  /* M3 color roles as Tailwind utilities: bg-primary, text-on-primary,
-     border-outline, bg-surface-variant, etc. */
-  --color-primary: var(--md-sys-color-primary);
-  --color-on-primary: var(--md-sys-color-on-primary);
-  --color-primary-container: var(--md-sys-color-primary-container);
-  --color-on-primary-container: var(--md-sys-color-on-primary-container);
-  --color-secondary: var(--md-sys-color-secondary);
-  --color-on-secondary: var(--md-sys-color-on-secondary);
-  --color-secondary-container: var(--md-sys-color-secondary-container);
-  --color-on-secondary-container: var(--md-sys-color-on-secondary-container);
-  --color-tertiary: var(--md-sys-color-tertiary);
-  --color-on-tertiary: var(--md-sys-color-on-tertiary);
-  --color-tertiary-container: var(--md-sys-color-tertiary-container);
-  --color-on-tertiary-container: var(--md-sys-color-on-tertiary-container);
-  --color-error: var(--md-sys-color-error);
-  --color-on-error: var(--md-sys-color-on-error);
-  --color-error-container: var(--md-sys-color-error-container);
-  --color-on-error-container: var(--md-sys-color-on-error-container);
-  --color-surface: var(--md-sys-color-surface);
-  --color-on-surface: var(--md-sys-color-on-surface);
-  --color-surface-variant: var(--md-sys-color-surface-variant);
-  --color-on-surface-variant: var(--md-sys-color-on-surface-variant);
-  --color-outline: var(--md-sys-color-outline);
-  --color-outline-variant: var(--md-sys-color-outline-variant);
+  --color-text-strong: var(--text-strong);
+  --color-text-body: var(--text-body);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+  --color-text-invert: var(--text-invert);
 
-  /* M3 motion as Tailwind utilities: ease-standard, duration-medium2, etc. */
-  --ease-standard: var(--md-sys-motion-easing-standard);
-  --ease-standard-decelerate: var(--md-sys-motion-easing-standard-decelerate);
-  --ease-standard-accelerate: var(--md-sys-motion-easing-standard-accelerate);
-  --ease-emphasized: var(--md-sys-motion-easing-emphasized);
-  --ease-emphasized-decelerate: var(--md-sys-motion-easing-emphasized-decelerate);
-  --ease-emphasized-accelerate: var(--md-sys-motion-easing-emphasized-accelerate);
+  --color-line-hairline: var(--line-hairline);
+  --color-line-strong: var(--line-strong);
+  --color-line-focus: var(--line-focus);
+
+  --color-accent: var(--accent);
+  --color-accent-press: var(--accent-press);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-wash: var(--accent-wash);
+  --color-accent-quiet: var(--accent-quiet);
+  --color-accent-text: var(--accent-text);
+
+  --color-status-pending-ink: var(--status-pending-ink);
+  --color-status-pending-bg: var(--status-pending-bg);
+  --color-status-pending-line: var(--status-pending-line);
+  --color-status-purchased-ink: var(--status-purchased-ink);
+  --color-status-purchased-bg: var(--status-purchased-bg);
+  --color-status-purchased-line: var(--status-purchased-line);
+  --color-status-received-ink: var(--status-received-ink);
+  --color-status-received-bg: var(--status-received-bg);
+  --color-status-received-line: var(--status-received-line);
+  --color-status-packed-ink: var(--status-packed-ink);
+  --color-status-packed-bg: var(--status-packed-bg);
+  --color-status-packed-line: var(--status-packed-line);
+  --color-status-completed-ink: var(--status-completed-ink);
+  --color-status-completed-bg: var(--status-completed-bg);
+  --color-status-completed-line: var(--status-completed-line);
+  --color-status-cancelled-ink: var(--status-cancelled-ink);
+  --color-status-cancelled-bg: var(--status-cancelled-bg);
+  --color-status-cancelled-line: var(--status-cancelled-line);
+
+  --color-danger: var(--danger);
+  --color-danger-wash: var(--danger-wash);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-ring-soft: var(--ring-soft);
+  --color-overlay-scrim: var(--overlay-scrim);
+
+  /* radius — this app's own scale, not Tailwind's default one */
+  --radius-xs: 4px;
+  --radius-sm: 9px;
+  --radius-md: 15px;
+  --radius-lg: 20px;
+
+  /* shadow — already-composed multi-layer box-shadow values */
+  --shadow-raised: var(--shadow-raised);
+  --shadow-sheet: var(--shadow-sheet);
+  --shadow-dialog: var(--shadow-dialog);
+
+  /* motion. `--ease-*` is a real Tailwind namespace, so ease-standard /
+     ease-exit resolve on their own. Duration is NOT — v4 has no
+     `--duration-*` namespace, only `--default-transition-duration` — so the
+     named durations are declared as real utilities below instead, and the
+     defaults here make a bare `transition-*` already correct for this
+     system rather than 150ms of Tailwind's own curve. */
+  --ease-standard: var(--ease-standard);
+  --ease-exit: var(--ease-exit);
+  --default-transition-duration: var(--dur-fast);
+  --default-transition-timing-function: var(--ease-standard);
+
+  /* Sheet/scrim motion, off the keyframes in styles/tokens/motion.css. These
+     exist because shadcn's stock overlay markup leans on `animate-in` /
+     `slide-in-from-bottom` from the tw-animate-css plugin, which this project
+     doesn't install — those classes were silently dead, so the one modal
+     surface in the system had no motion at all. Driving it from the system's
+     own keyframes keeps the timing on --dur-sheet/--dur-fast instead of a
+     plugin's defaults, and inherits the prefers-reduced-motion guard already
+     in motion.css. */
+  --animate-sheet-in: ds-sheet-in var(--dur-sheet) var(--ease-standard);
+  --animate-sheet-out: ds-sheet-out var(--dur-fast) var(--ease-exit);
+  --animate-scrim-in: ds-scrim-in var(--dur-base) var(--ease-standard);
+  --animate-scrim-out: ds-scrim-out var(--dur-fast) var(--ease-exit);
+
+  /* font family */
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+  --font-mono: var(--font-mono);
+
+  /* type — size/line-height pairs decomposed from the composite --type-*
+     shorthands (weight comes from Tailwind's own font-semibold/font-bold;
+     family from font-display/font-ui/font-mono above). */
+  --text-display-lg: 42px;
+  --text-display-lg--line-height: 1.02;
+  --text-display-md: 30px;
+  --text-display-md--line-height: 1.06;
+  --text-display-sm: 22px;
+  --text-display-sm--line-height: 1.14;
+  --text-screen-title: 20px;
+  --text-screen-title--line-height: 1.25;
+  --text-title: 17px;
+  --text-title--line-height: 1.3;
+  --text-body: 15px;
+  --text-body--line-height: 1.5;
+  --text-body-strong: 15px;
+  --text-body-strong--line-height: 1.45;
+  --text-small: 13px;
+  --text-small--line-height: 1.45;
+  --text-small-strong: 13px;
+  --text-small-strong--line-height: 1.4;
+  --text-label: 10px;
+  --text-label--line-height: 1.2;
+  --text-code: 12px;
+  --text-code--line-height: 1.4;
+  --text-metric-xl: 40px;
+  --text-metric-xl--line-height: 0.98;
+  --text-metric-lg: 30px;
+  --text-metric-lg--line-height: 1;
+  --text-metric-md: 22px;
+  --text-metric-md--line-height: 1.02;
+
+  /* tracking — the handful of type tokens that carry non-default letter-spacing */
+  --tracking-display: -0.04em;
+  --tracking-screen-title: -0.02em;
+  --tracking-label: 0.1em;
+  --tracking-metric: -0.035em;
 }
 
-body {
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/*
+ * Named durations, as real utilities.
+ *
+ * Tailwind v4 resolves `ease-*` from the `--ease-*` theme namespace but has
+ * no matching one for duration — `duration-fast` and friends silently
+ * generated nothing, so every transition in the kit was running at
+ * Tailwind's default 150ms instead of the system's own timings. Declaring
+ * them with @utility keeps the readable class names and makes them real.
+ */
+@utility duration-instant {
+  transition-duration: var(--dur-instant);
+}
+@utility duration-fast {
+  transition-duration: var(--dur-fast);
+}
+@utility duration-base {
+  transition-duration: var(--dur-base);
+}
+@utility duration-sheet {
+  transition-duration: var(--dur-sheet);
 }

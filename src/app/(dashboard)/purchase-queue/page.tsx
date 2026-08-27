@@ -1,125 +1,111 @@
-import { and, asc, eq, ilike, inArray, sql } from "drizzle-orm";
+import { asc, and, eq, gte, lte, inArray } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
-import { orderItems, products, productImages } from "@/db/schema";
-import { fieldInputClass } from "@/components/form-field";
-import { batchMarkPurchasedAction } from "./actions";
+import { orderItems, orders, products, productImages, customers, orderItemModifiers, modifierOptions } from "@/db/schema";
+import { resolveDateWindow } from "@/lib/date-range";
+import { PurchaseQueueView, type PurchaseGroup } from "./purchase-queue-view";
 
 // The Supplier's dedicated home screen (docs/PRD.md §6.3) — the core
 // feature: pending Order Items grouped by Product, across every order and
 // customer, so today's demand is visible at a glance and clearable in one
 // batch tap per product, not by scanning individual orders.
-export default async function PurchaseQueuePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q } = await searchParams;
+//
+// Fetches individual pending rows (not a SQL GROUP BY) and groups them in
+// JS, because the reskin's PurchaseGroupCard has a real per-customer
+// breakdown on expand — the previous version only fetched the aggregate, so
+// that breakdown had nothing to show. Search is client-side over the already
+// -fetched groups (matches the design source's PurchaseQueueScreen.jsx);
+// pending-queue size for one shop doesn't warrant a server round-trip per
+// keystroke.
+export default async function PurchaseQueuePage({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string }> }) {
+  // Filters on when the Item was ordered, not on the Order header — the
+  // queue's unit of work is the Order Item, and an item added to a draft
+  // days after its order was started is today's demand, not that day's.
+  const dateWindow = resolveDateWindow(await searchParams);
 
   const groups = await withCurrentOrganization(async ({ organizationId, tx }) => {
     const rows = await tx
       .select({
+        orderItemId: orderItems.id,
         productId: products.id,
         productName: products.name,
         sourceUrl: products.sourceUrl,
-        totalQuantity: sql<number>`sum(${orderItems.quantity})`.mapWith(Number),
-        orderCount: sql<number>`count(distinct ${orderItems.orderId})`.mapWith(Number),
+        orderId: orderItems.orderId,
+        quantity: orderItems.quantity,
+        customerName: customers.name,
       })
       .from(orderItems)
       .innerJoin(products, eq(products.id, orderItems.productId))
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .innerJoin(customers, eq(customers.id, orders.customerId))
       .where(
-        q
-          ? and(
-              eq(orderItems.organizationId, organizationId),
-              eq(orderItems.status, "pending"),
-              ilike(products.name, `%${q}%`),
-            )
-          : and(eq(orderItems.organizationId, organizationId), eq(orderItems.status, "pending")),
-      )
-      .groupBy(products.id, products.name, products.sourceUrl);
+        and(
+          eq(orderItems.organizationId, organizationId),
+          eq(orderItems.status, "pending"),
+          ...(dateWindow.from ? [gte(orderItems.createdAt, dateWindow.from)] : []),
+          ...(dateWindow.to ? [lte(orderItems.createdAt, dateWindow.to)] : []),
+        ),
+      );
 
-    const productIds = rows.map((row) => row.productId);
-    const images =
+    const productIds = [...new Set(rows.map((r) => r.productId))];
+    const orderItemIds = rows.map((r) => r.orderItemId);
+
+    const [images, selections] = await Promise.all([
       productIds.length === 0
         ? []
-        : await tx
+        : tx
             .select({ productId: productImages.productId, url: productImages.url })
             .from(productImages)
             .where(inArray(productImages.productId, productIds))
-            .orderBy(asc(productImages.sortOrder));
+            .orderBy(asc(productImages.sortOrder)),
+      orderItemIds.length === 0
+        ? []
+        : tx
+            .select({ orderItemId: orderItemModifiers.orderItemId, value: modifierOptions.value })
+            .from(orderItemModifiers)
+            .innerJoin(modifierOptions, eq(modifierOptions.id, orderItemModifiers.modifierOptionId))
+            .where(inArray(orderItemModifiers.orderItemId, orderItemIds)),
+    ]);
 
     const primaryImageByProduct = new Map<string, string>();
     for (const image of images) {
-      if (!primaryImageByProduct.has(image.productId)) {
-        primaryImageByProduct.set(image.productId, image.url);
-      }
+      if (!primaryImageByProduct.has(image.productId)) primaryImageByProduct.set(image.productId, image.url);
+    }
+    const selectionsByItem = new Map<string, string[]>();
+    for (const s of selections) {
+      const list = selectionsByItem.get(s.orderItemId) ?? [];
+      list.push(s.value);
+      selectionsByItem.set(s.orderItemId, list);
     }
 
-    return rows.map((row) => ({ ...row, imageUrl: primaryImageByProduct.get(row.productId) }));
+    type Working = PurchaseGroup & { orderIdSet: Set<string> };
+    const byProduct = new Map<string, Working>();
+    for (const row of rows) {
+      let group = byProduct.get(row.productId);
+      if (!group) {
+        group = {
+          productId: row.productId,
+          productName: row.productName,
+          sourceUrl: row.sourceUrl,
+          imageUrl: primaryImageByProduct.get(row.productId),
+          totalQuantity: 0,
+          orderCount: 0,
+          breakdown: [],
+          orderIdSet: new Set(),
+        };
+        byProduct.set(row.productId, group);
+      }
+      group.totalQuantity += row.quantity;
+      group.orderIdSet.add(row.orderId);
+      group.breakdown.push({
+        orderItemId: row.orderItemId,
+        customer: row.customerName,
+        selection: (selectionsByItem.get(row.orderItemId) ?? []).join(" / "),
+        qty: row.quantity,
+      });
+    }
+
+    return Array.from(byProduct.values()).map(({ orderIdSet, ...g }) => ({ ...g, orderCount: orderIdSet.size }));
   });
 
-  return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Purchase Queue</h1>
-
-      <form method="get" className="flex gap-2">
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search products…"
-          className={fieldInputClass}
-        />
-        <button type="submit" className="min-h-11 shrink-0 rounded-md border border-neutral-300 px-3 text-sm">
-          Search
-        </button>
-      </form>
-
-      {groups.length === 0 ? (
-        <p className="text-sm text-neutral-500">Nothing pending — you&apos;re caught up.</p>
-      ) : (
-        <ul className="space-y-3">
-          {groups.map((group) => (
-            <li key={group.productId} className="rounded-lg border border-neutral-200 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 gap-3">
-                  {group.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={group.imageUrl}
-                      alt=""
-                      className="h-14 w-14 shrink-0 rounded-md object-cover"
-                    />
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{group.productName}</p>
-                    <p className="text-sm text-neutral-500">
-                      qty {group.totalQuantity} across {group.orderCount}{" "}
-                      {group.orderCount === 1 ? "order" : "orders"}
-                    </p>
-                    {group.sourceUrl && (
-                      <a
-                        href={group.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm text-blue-600 underline"
-                      >
-                        Open listing
-                      </a>
-                    )}
-                  </div>
-                </div>
-                <form action={batchMarkPurchasedAction.bind(null, group.productId)} className="shrink-0">
-                  <button
-                    type="submit"
-                    className="min-h-11 rounded-md bg-green-600 px-3 text-sm font-medium text-white"
-                  >
-                    Mark all Purchased
-                  </button>
-                </form>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  return <PurchaseQueueView groups={groups} window={dateWindow} />;
 }

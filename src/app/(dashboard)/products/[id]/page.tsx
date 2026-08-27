@@ -8,7 +8,13 @@ import {
   modifierOptions,
   productModifierOptions,
 } from "@/db/schema";
-import { Field, fieldInputClass } from "@/components/form-field";
+import { Screen, ScrollBody } from "@/components/ui/screen";
+import { TopBar } from "@/components/ui/top-bar";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Thumb } from "@/components/ui/thumb";
 import {
   attachModifierOptionsAction,
   createModifierAction,
@@ -78,109 +84,105 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const { product, images, modifierGroups } = data;
 
   return (
-    <div className="mx-auto max-w-md space-y-6">
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-lg font-semibold">{product.name}</h1>
+    <Screen>
+      <TopBar
+        title={product.name}
+        backHref="/products"
+        right={
           <form action={setProductStatusAction.bind(null, product.id, product.status === "active" ? "archived" : "active")}>
-            <button type="submit" className="text-sm text-neutral-500 underline">
+            <Button type="submit" variant="ghost" size="sm">
               {product.status === "active" ? "Archive" : "Unarchive"}
-            </button>
+            </Button>
           </form>
-        </div>
-        {images.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto py-1">
-            {images.map((image) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={image.id}
-                src={image.url}
-                alt=""
-                className="h-20 w-20 shrink-0 rounded-md object-cover"
-              />
+        }
+      />
+      <ScrollBody>
+        <div className="grid gap-4 px-5 py-4">
+          <div className="flex items-center gap-2">
+            {product.status === "archived" ? <Badge tone="quiet">Archived</Badge> : <Badge tone="accent">Active</Badge>}
+            {product.price ? <span className="font-ui text-body-strong text-text-strong">{Number(product.price).toLocaleString()} MMK</span> : null}
+          </div>
+
+          {images.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto">
+              {images.map((image) => (
+                <Thumb key={image.id} src={image.url} size={80} />
+              ))}
+            </div>
+          ) : (
+            <Thumb size={80} label="no photo" />
+          )}
+
+          <p className="font-ui text-body text-text-body">{product.description}</p>
+
+          {product.sourceUrl && (
+            <a href={product.sourceUrl} target="_blank" rel="noreferrer" className="font-ui text-small-strong">
+              View listing
+            </a>
+          )}
+
+          <section className="grid gap-3">
+            <span className="font-mono text-label tracking-label uppercase text-text-faint">Modifiers</span>
+
+            {modifierGroups.length === 0 && <p className="font-ui text-small text-text-muted">No modifiers in your catalog yet.</p>}
+
+            {modifierGroups.map(([modifierId, group]) => (
+              <div key={modifierId} className="grid gap-2 rounded-md border border-line-hairline p-3">
+                <p className="font-ui text-body-strong text-text-strong">{group.name}</p>
+
+                {group.attached.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {group.attached.map((option) => (
+                      <form key={option.id} action={detachModifierOptionAction.bind(null, product.id, option.id)}>
+                        <button
+                          type="submit"
+                          title="Remove"
+                          className="cursor-pointer rounded-full border-none bg-surface-raised px-2.5 py-1 font-ui text-small text-text-strong"
+                        >
+                          {option.value} ✕
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                )}
+
+                {group.available.length > 0 && (
+                  <form action={attachModifierOptionsAction} className="grid gap-2">
+                    <input type="hidden" name="productId" value={product.id} />
+                    <div className="flex flex-wrap gap-3">
+                      {group.available.map((option) => (
+                        <label key={option.id} className="flex items-center gap-1.5 font-ui text-small text-text-body">
+                          <input type="checkbox" name="modifierOptionIds" value={option.id} />
+                          {option.value}
+                        </label>
+                      ))}
+                    </div>
+                    <Button type="submit" variant="ghost" size="sm">
+                      Add selected
+                    </Button>
+                  </form>
+                )}
+              </div>
             ))}
-          </div>
-        )}
-        <p className="text-sm text-neutral-600">{product.description}</p>
-        {product.sourceUrl && (
-          <a
-            href={product.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm text-blue-600 underline"
-          >
-            View listing
-          </a>
-        )}
-      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-neutral-700">Modifiers</h2>
-
-        {modifierGroups.length === 0 && (
-          <p className="text-sm text-neutral-500">No modifiers in your catalog yet.</p>
-        )}
-
-        {modifierGroups.map(([modifierId, group]) => (
-          <div key={modifierId} className="rounded-lg border border-neutral-200 p-3">
-            <p className="text-sm font-medium">{group.name}</p>
-
-            {group.attached.length > 0 && (
-              <ul className="mt-2 flex flex-wrap gap-2">
-                {group.attached.map((option) => (
-                  <li key={option.id}>
-                    <form action={detachModifierOptionAction.bind(null, product.id, option.id)} className="inline">
-                      <button
-                        type="submit"
-                        className="rounded-full bg-neutral-100 px-3 py-1 text-sm"
-                        title="Remove"
-                      >
-                        {option.value} ✕
-                      </button>
-                    </form>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {group.available.length > 0 && (
-              <form action={attachModifierOptionsAction} className="mt-2 space-y-2">
+            <details className="rounded-md border border-line-hairline p-3">
+              <summary className="cursor-pointer font-ui text-small-strong text-text-strong">+ New modifier</summary>
+              <form action={createModifierAction} className="mt-3 grid gap-3">
                 <input type="hidden" name="productId" value={product.id} />
-                <div className="flex flex-wrap gap-3">
-                  {group.available.map((option) => (
-                    <label key={option.id} className="flex items-center gap-1 text-sm">
-                      <input type="checkbox" name="modifierOptionIds" value={option.id} />
-                      {option.value}
-                    </label>
-                  ))}
-                </div>
-                <button type="submit" className="text-sm text-blue-600 underline">
-                  Add selected
-                </button>
+                <Field label="Name" hint="e.g. Color, Size">
+                  <Input name="modifierName" required />
+                </Field>
+                <Field label="Options" hint="Comma-separated, e.g. Black, White, Red">
+                  <Input name="options" required />
+                </Field>
+                <Button full type="submit" icon="check">
+                  Create and attach
+                </Button>
               </form>
-            )}
-          </div>
-        ))}
-
-        <details className="rounded-lg border border-neutral-200 p-3">
-          <summary className="cursor-pointer text-sm font-medium">+ New modifier</summary>
-          <form action={createModifierAction} className="mt-3 space-y-3">
-            <input type="hidden" name="productId" value={product.id} />
-            <Field label="Name (e.g. Color, Size)">
-              <input name="modifierName" required className={fieldInputClass} />
-            </Field>
-            <Field label="Options, comma-separated (e.g. Black, White, Red)">
-              <input name="options" required className={fieldInputClass} />
-            </Field>
-            <button
-              type="submit"
-              className="min-h-11 w-full rounded-md bg-neutral-900 px-3 text-base font-medium text-white"
-            >
-              Create and attach
-            </button>
-          </form>
-        </details>
-      </section>
-    </div>
+            </details>
+          </section>
+        </div>
+      </ScrollBody>
+    </Screen>
   );
 }

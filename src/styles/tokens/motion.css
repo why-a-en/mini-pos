@@ -1,0 +1,66 @@
+:root {
+  /* Calmer motion. Durations are longer and the standard curve settles rather
+     than snaps: nothing in the interface should feel like it is hurrying the
+     user. Exit stays quicker than entrance, so dismissals still feel decisive. */
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 0.9, 1);
+  --dur-instant: 120ms;
+  --dur-fast: 200ms;
+  --dur-base: 320ms;
+  --dur-sheet: 440ms;
+}
+
+/* Presence, and work-in-progress. In a monochrome system these two carry the
+   "something is alive here" signal that a coloured dot or a spinner usually
+   carries, so they are foundations rather than decoration. Both are slow enough
+   to read as breathing rather than blinking. */
+@keyframes ds-breathe {
+  0%, 100% { opacity: 0.18; }
+  50%      { opacity: 1; }
+}
+
+@keyframes ds-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+@keyframes ds-tick {
+  0%, 100% { transform: scaleY(0.2); opacity: 0.25; }
+  40%      { transform: scaleY(1);   opacity: 1; }
+}
+
+@keyframes ds-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+@keyframes ds-sheet-in {
+  from { transform: translateY(8%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* Completing the set ds-sheet-in opens: a sheet that enters has to leave, and
+   the scrim it rides on needs its own pair. Exit is deliberately the quicker
+   half (--dur-fast + --ease-exit, per the durations note above) — an entrance
+   settles, a dismissal should feel decisive. Exposed as animate-sheet-in /
+   animate-sheet-out / animate-scrim-in / animate-scrim-out utilities via the
+   --animate-* block in app/globals.css. */
+@keyframes ds-sheet-out {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(8%); opacity: 0; }
+}
+
+@keyframes ds-scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes ds-scrim-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-instant: 0ms; --dur-fast: 0ms; --dur-base: 0ms; --dur-sheet: 0ms; }
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
