@@ -10,7 +10,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx scripts/seed-test-users.mts"
+    "org:create": "tsx scripts/create-organization.mts",
+    "member:add": "tsx scripts/add-membership.mts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1116.0",
@@ -18,6 +21,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-slot": "^1.3.3",
     "argon2": "^0.45.1",
+    "better-auth": "^1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
@@ -42,7 +46,9 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.13",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   },
   "description": "Product catalog and daily order coordination for Customer Service and Suppliers — see [`docs/PRD.md`](./docs/PRD.md) for the full context on what this replaces and why.",
   "main": "index.js",

@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { loginAction } from "./actions";
 
-// Matches scripts/seed-test-users.mts — keep in sync if that script's
-// credentials ever change.
+// The two seeded development accounts, migrated onto better-auth with their
+// original passwords intact. New Organizations are provisioned with
+// `pnpm org:create`; these shortcuts are dev convenience only.
 const TEST_ACCOUNTS = [
   { label: "Support Agent", email: "cs@test.local", password: "password123" },
   { label: "Supplier", email: "supplier@test.local", password: "password123" },

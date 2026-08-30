@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
+import { SESSION_COOKIE_NAME, SECURE_SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 
 // Cheap cookie-presence check only — not a real session validation (that
 // needs a DB hit, which happens in the (dashboard) layout server component
@@ -19,7 +19,9 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/constants";
 // there's exactly one source of truth for "is this session actually
 // valid" instead of two that can disagree.
 export function proxy(request: NextRequest) {
-  const hasSessionCookie = request.cookies.has(SESSION_COOKIE_NAME);
+  const hasSessionCookie =
+    request.cookies.has(SESSION_COOKIE_NAME) ||
+    request.cookies.has(SECURE_SESSION_COOKIE_NAME);
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
 
   if (!hasSessionCookie && !isLoginPage) {
