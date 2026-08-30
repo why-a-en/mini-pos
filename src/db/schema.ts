@@ -273,7 +273,12 @@ export const orders = pgTable(
   },
   (table) => [
     index("orders_organization_customer_idx").on(table.organizationId, table.customerId),
-    index("orders_organization_created_idx").on(table.organizationId, table.createdAt),
+    // `id` is part of the key because the Order log pages by keyset on
+    // (created_at, id) — see fetchOrdersPage. created_at alone isn't unique,
+    // so the sort it defines isn't total and a cursor on it drops or repeats
+    // rows exactly at a page boundary. Including id here lets Postgres serve
+    // the row-wise comparison and the ORDER BY from one index scan.
+    index("orders_organization_created_idx").on(table.organizationId, table.createdAt, table.id),
     tenantIsolationPolicy(),
   ],
 ).enableRLS();
