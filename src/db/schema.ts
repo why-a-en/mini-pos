@@ -17,6 +17,11 @@ import { sql } from "drizzle-orm";
 // --- Enums ---------------------------------------------------------------
 
 export const organizationStatusEnum = pgEnum("organization_status", ["active", "suspended"]);
+// Per-membership, deliberately not per-user. better-auth's admin plugin
+// offers users.banned, but that is global — suspending a Supplier who
+// sources for two resellers would lock them out of both. Access is granted
+// by the membership, so it is revoked there too.
+export const memberStatusEnum = pgEnum("member_status", ["active", "suspended"]);
 export const productStatusEnum = pgEnum("product_status", ["active", "archived"]);
 // See docs/adr/0001-order-item-lifecycle-and-packing.md for why this has
 // five stages, not three, and why cancelled is reachable from all of them.
@@ -162,6 +167,10 @@ export const members = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
+    // Suspended members keep their row — and therefore every Order and
+    // Product they created stays attributable — but resolve to no session
+    // for this Organization. Removal is a separate, harder action.
+    status: memberStatusEnum("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

@@ -27,6 +27,7 @@ interface Shortcut {
 // own Purchase Queue.
 const SHORTCUTS_BY_ROLE: Record<AppRole, Shortcut[]> = {
   admin: [
+    { href: "/admin/staff", label: "Staff", icon: "user-plus" },
     { href: "/purchase-queue", label: "To Purchase", icon: "shopping-cart" },
     { href: "/parcels", label: "Parcels", icon: "box" },
     { href: "/customers", label: "Customers", icon: "users" },

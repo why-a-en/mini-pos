@@ -10,25 +10,22 @@ import { auth } from "./config";
 // stays a change to this file plus tenancy.ts. See ADR-0002 and
 // docs/ARCHITECTURE_ROADMAP.md §1.
 
-/**
- * The functional role, within an Organization. Stored on `members.role` as
- * text (better-auth writes comma-separated values for multi-role members,
- * which a pg enum can't hold) — this union is what keeps it honest in
- * TypeScript.
- *
- * **Two different things are called "admin" in this codebase, and they are
- * not related:**
- *
- * - `AppRole = "admin"` (here) — a *tenant* role. The reseller's own
- *   administrator: manages their staff, sees their reports. Scoped to one
- *   Organization like any other member, and holds no power outside it.
- * - `users.role` / `PLATFORM_ADMIN_USER_IDS` — *platform* administration.
- *   That's us, the operator, and it's what gates impersonation.
- *
- * A tenant admin can never become a platform admin; the latter is an
- * environment allowlist with no in-app path to it.
- */
-export type AppRole = "admin" | "support_agent" | "supplier";
+// The functional role within an Organization. Defined in src/services/types
+// so the framework-free side of the codebase owns it, and re-exported here
+// because feature code imports everything auth-shaped from this module.
+//
+// **Two unrelated things are called "admin" in this codebase:**
+//
+// - AppRole "admin" — a *tenant* role. The reseller's own administrator:
+//   manages their staff, sees their reports. Scoped to one Organization
+//   like any member, with no power outside it.
+// - users.role / PLATFORM_ADMIN_USER_IDS — *platform* administration.
+//   That is us, the operator, and it is what gates impersonation.
+//
+// A tenant admin can never become a platform admin: the latter is an
+// environment allowlist with no in-app path to it.
+export type { AppRole } from "@/services/types";
+import type { AppRole } from "@/services/types";
 
 export type SessionUser = {
   id: string;
@@ -61,7 +58,11 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!organizationId) return null;
 
   const [row] = await db
-    .select({ role: members.role, status: organizations.status })
+    .select({
+      role: members.role,
+      memberStatus: members.status,
+      organizationStatus: organizations.status,
+    })
     .from(members)
     .innerJoin(organizations, eq(organizations.id, members.organizationId))
     .where(
@@ -70,8 +71,13 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     .limit(1);
 
   if (!row) return null;
-  // Suspension: the only lever over a client account (ADR-0002 decision 8).
-  if (row.status !== "active") return null;
+  // Two independent suspensions, and either one ends the session:
+  //   - the Organization, our lever over a client account (ADR-0002 §8);
+  //   - this membership, an Admin's lever over their own staff.
+  // Membership status is deliberately not users.banned: that is global, and
+  // would lock a shared Supplier out of every reseller they work for.
+  if (row.organizationStatus !== "active") return null;
+  if (row.memberStatus !== "active") return null;
 
   return {
     id: session.user.id,
@@ -87,6 +93,18 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  return user;
+}
+
+/**
+ * For screens and actions only an Organization's own Admin may reach.
+ *
+ * Hiding a shortcut is not access control — every admin Server Action calls
+ * this, not just the page that renders the link.
+ */
+export async function requireAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+  if (user.role !== "admin") redirect("/");
   return user;
 }
 
