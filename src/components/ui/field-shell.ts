@@ -5,38 +5,62 @@
  *
  * They previously disagreed three ways: two used `has-[input:focus]` on a
  * wrapper, one used `focus:` on the element; paddings and disabled handling
- * differed; and the focus state was a bare 1px border flipping straight from
- * `--line-hairline` to `--line-focus`. In dark that is 0.272 → 0.965
- * lightness in a single step, with nothing else changing — it reads as a
- * snap, not a transition, however long you make it.
+ * differed; and the focus state was declared per component.
  *
- * The progression now has somewhere to travel:
+ * The progression:
  *
  *   rest   hairline border, sunken fill
  *   hover  border lifts to --line-strong (an invitation, not a state)
- *   focus  border reaches --line-focus AND a soft halo opens behind it
+ *   focus  border reaches --line-focus
  *
- * The halo is `--ring-soft`, the same token Button's press ring uses, so
- * focus and press feel like one family. It's what gives the change body:
- * a line brightening alone is abrupt; a line brightening while a 3px glow
- * grows underneath eases.
+ * Focus is that border and nothing else, which is a correction. It used to
+ * also open a `0 0 0 3px var(--color-ring-soft)` halo, described here as a
+ * glow that gave the change body. It was neither soft nor a glow: a
+ * box-shadow with spread and *no blur radius* is a hard-edged solid ring.
+ * What actually rendered was a second grey band with its own crisp outer
+ * boundary, sitting outside a maximum-contrast white line — so a focused
+ * field was four stacked edges (fill, white stroke, grey ring, page) where
+ * it should read as one. That stack is what made focus look cheap.
+ *
+ * A blurred version was tried and rejected: on a monochrome dark surface a
+ * translucent white bloom reads as haze on the glass, not as focus. Colour
+ * is what lets other systems get away with a wide ring, and this one has
+ * none. One crisp edge is the honest answer here.
+ *
+ * The abruptness the halo was meant to cushion is a transition problem, and
+ * `base` below already solves it: border-color eases over --dur-fast on
+ * --ease-standard. Nothing needs to grow underneath for that to settle.
+ *
+ * Keyboard users are not worse off — this is a text field, so browsers match
+ * :focus-visible on pointer focus too, meaning a separate louder keyboard
+ * treatment could never have been differentiated here anyway.
  */
 
 /** Everything shared by every input surface. */
 const base = [
   "w-full border bg-surface-sunken font-ui text-body text-text-strong",
-  "transition-[border-color,box-shadow,background-color] duration-fast ease-standard",
+  "transition-[border-color,background-color] duration-fast ease-standard",
   "placeholder:text-text-faint",
   "disabled:cursor-not-allowed disabled:bg-surface-raised disabled:opacity-55",
 ].join(" ");
 
-/** Border/ring progression for a control that *is* the focusable element
- *  (Textarea, the bare file input) — `:focus` sits directly on it. */
+/** Border progression for a control that *is* the focusable element
+ *  (Textarea, the bare file input) — `:focus` sits directly on it.
+ *
+ *  `focus-visible:shadow-none` is the other half of removing the ring, and
+ *  it is easy to miss: base.css carries a global
+ *  `:focus-visible { box-shadow: var(--focus-ring) }`, and a text field
+ *  matches :focus-visible on pointer focus too, so a bare <textarea> was
+ *  still being painted with the 2px+4px keyboard ring on click — the exact
+ *  double edge this set out to remove, arriving from somewhere else. The
+ *  wrapper shells never showed it because fieldShellInner already clears
+ *  box-shadow on the <input> underneath. Utilities outrank layer(base), so
+ *  this wins. */
 export const fieldShellSelf = [
   base,
   "border-line-hairline outline-none",
   "enabled:hover:border-line-strong",
-  "focus:border-line-focus focus:shadow-[0_0_0_3px_var(--color-ring-soft)]",
+  "focus:border-line-focus focus-visible:shadow-none",
   "aria-invalid:border-danger aria-invalid:focus:border-danger",
 ].join(" ");
 
@@ -49,7 +73,7 @@ export const fieldShellWrapper = [
   "flex items-center gap-2",
   "border-line-hairline",
   "hover:not-has-[input:disabled]:border-line-strong",
-  "has-[input:focus]:border-line-focus has-[input:focus]:shadow-[0_0_0_3px_var(--color-ring-soft)]",
+  "has-[input:focus]:border-line-focus",
   "has-[input[aria-invalid='true']]:border-danger",
 ].join(" ");
 
