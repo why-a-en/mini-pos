@@ -5,7 +5,7 @@ import { ParcelsView, type ParcelItem, type ParcelStage } from "./parcels-view";
 
 const STAGES = ["purchased", "received", "packed"] as const;
 
-// Customer Service's view of what's arrived and needs packing (docs/PRD.md
+// The Support Agent's view of what's arrived and needs packing (docs/PRD.md
 // §6.4) — deliberately separate from the full Order log, since "what needs
 // packing today" is a different question from "what did we log today."
 export default async function ParcelsPage({

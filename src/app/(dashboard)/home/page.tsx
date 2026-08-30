@@ -18,12 +18,12 @@ interface Shortcut {
 
 // A role's own tab-bar destinations stay out of its shortcuts — repeating a
 // tab here is just the same place twice, one tap further away. That rules
-// out Settings for both roles, and Orders for Customer Service (see
+// out Settings for both roles, and Orders for Support Agents (see
 // (dashboard)/layout.tsx's NAV_BY_ROLE). Supplier still gets Orders, as
 // "History": it isn't a tab for them, and it's a different job from their
 // own Purchase Queue.
 const SHORTCUTS_BY_ROLE: Record<string, Shortcut[]> = {
-  customer_service: [
+  support_agent: [
     { href: "/parcels", label: "Parcels", icon: "box" },
     { href: "/customers", label: "Customers", icon: "users" },
     { href: "/products", label: "Products", icon: "package" },
@@ -60,7 +60,7 @@ interface HomeData {
 export default async function HomePage() {
   const user = await requireUser();
   const shortcuts = SHORTCUTS_BY_ROLE[user.role];
-  const isSupport = user.role === "customer_service";
+  const isSupport = user.role === "support_agent";
   const isSupplier = user.role === "supplier";
 
   // "Today" (and the greeting below) is server-local time — there's no

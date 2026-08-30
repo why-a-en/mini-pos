@@ -4,7 +4,7 @@
 // (docs/adr/0002-multi-tenancy-mvp.md decision 10) — running it by hand a
 // few times is what will tell us what a real signup flow should do.
 //
-//   pnpm org:create "Acme Resale" cs@acme.com "Aung Aung" <password> customer_service
+//   pnpm org:create "Acme Resale" cs@acme.com "Aung Aung" <password> support_agent
 import { config as loadEnv } from "dotenv";
 loadEnv({ path: ".env.local" });
 
@@ -16,17 +16,17 @@ const { db } = await import("../src/db/client");
 const { organizations, members, users } = await import("../src/db/schema");
 const { eq } = await import("drizzle-orm");
 
-const [name, email, fullName, password, role = "customer_service"] = process.argv.slice(2);
+const [name, email, fullName, password, role = "support_agent"] = process.argv.slice(2);
 
 if (!name || !email || !fullName || !password) {
   console.error(
-    'Usage: pnpm org:create "<Organization>" <email> "<Full Name>" <password> [customer_service|supplier]',
+    'Usage: pnpm org:create "<Organization>" <email> "<Full Name>" <password> [support_agent|supplier]',
   );
   process.exit(1);
 }
 
-if (role !== "customer_service" && role !== "supplier") {
-  console.error(`Unknown role "${role}" — expected customer_service or supplier.`);
+if (role !== "support_agent" && role !== "supplier") {
+  console.error(`Unknown role "${role}" — expected support_agent or supplier.`);
   process.exit(1);
 }
 

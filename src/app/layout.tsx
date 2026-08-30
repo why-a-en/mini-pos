@@ -21,7 +21,7 @@ const martianMono = Martian_Mono({
 
 export const metadata: Metadata = {
   title: "Mini POS",
-  description: "Product catalog and daily order coordination for Customer Service and Suppliers.",
+  description: "Product catalog and daily order coordination for Support Agents and Suppliers.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

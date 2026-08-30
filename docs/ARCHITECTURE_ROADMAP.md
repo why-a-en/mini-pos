@@ -48,7 +48,7 @@ Singapore, which is about as close to Myanmar as either provider goes. That
 removes the single largest latency lever before it needs pulling.
 
 **On capacity, the arithmetic is not close.** An order-logging tool for a
-resale business is a low-write workload: a Customer Service agent logs
+resale business is a low-write workload: a Support Agent logs
 orders at human typing speed, and a Supplier clears a queue in batches.
 Fifty Organizations each logging two hundred orders a day is ten thousand
 writes a day — well under one write per second sustained, against a Postgres
@@ -256,7 +256,7 @@ Recorded here because the answers shape everything above.
 - **Native mobile app?** Not yet. The phone-first web app is sufficient; a
   PWA, Expo or Flutter app may follow later. §5.1 sets the measurements that
   would say it is time.
-- **Who would it serve?** Staff only — Customer Service and Suppliers doing
+- **Who would it serve?** Staff only — Support Agents and Suppliers doing
   today's work on a phone. This is the cheap branch: same API, same auth,
   same roles, same tenant model. End Customers as an actor are *not* planned,
   which removes the largest data-model risk on the horizon.
@@ -266,7 +266,7 @@ Recorded here because the answers shape everything above.
 ## 8. Still open
 
 - **Does anything need to outlive a request in the user-facing sense?** Live
-  queue updates between Supplier and Customer Service, for instance. Not yet
+  queue updates between Supplier and Support Agent, for instance. Not yet
   decided. The default answer at current volume is polling, and websockets
   should not be built until someone actually complains about staleness —
   but this is worth settling before Stage 2b fixes an API contract.

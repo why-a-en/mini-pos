@@ -290,7 +290,7 @@ from "handed off" without needing a full status column.
 | `customer_id` | `uuid` FK → `customers.id` NOT NULL | |
 | `screenshot_url` | `text` | nullable — R2 object URL |
 | `notes` | `text` | nullable |
-| `created_by` | `uuid` FK → `users.id` | the Customer Service who logged it |
+| `created_by` | `uuid` FK → `users.id` | the Support Agent who logged it |
 | `created_at` | `timestamptz` | |
 | `placed_at` | `timestamptz` | nullable — null means still a draft |
 
@@ -298,7 +298,7 @@ from "handed off" without needing a full status column.
 
 ### `order_items`
 One line of an Order (PRD §5.5) — the unit the Supplier's Purchase Queue
-and Customer Service's Packing Queue actually operate on. **Status lives
+and Support Agent's Packing Queue actually operate on. **Status lives
 here, not on `orders`** — see
 [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md).
 

@@ -10,10 +10,10 @@ import { ImpersonationBanner } from "@/components/impersonation-banner";
 // highest-value direct tab, Settings, Home in the middle. Small phones (the
 // real target per docs/TECH_STACK.md §6) can't comfortably fit 5 tap
 // targets in one bar, so everything else (for supplier: History, Products,
-// Customers — for customer_service: Parcels, Products, Customers) moved to
+// Customers — for support_agent: Parcels, Products, Customers) moved to
 // shortcuts on Home instead.
 const NAV_BY_ROLE: Record<string, { left: TabItem; right: TabItem }> = {
-  customer_service: {
+  support_agent: {
     left: { href: "/orders", label: "Orders", icon: "receipt" },
     right: { href: "/settings", label: "Settings", icon: "settings" },
   },

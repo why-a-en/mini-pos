@@ -164,7 +164,7 @@ a managed provider.
 ## 6. Mobile-first, and robust on real-world phone browsers
 
 Hard requirement, not a nice-to-have — see
-[PRD.md §8](./PRD.md#8-non-functional-requirements). Customer Service and the
+[PRD.md §8](./PRD.md#8-non-functional-requirements). Support Agents and the
 Supplier use this primarily on phones, realistically mid-range Android
 devices on Myanmar/Thailand mobile networks — not flagship phones on
 fast wifi. That shapes concrete build decisions, not just a CSS

@@ -93,7 +93,7 @@ export function ParcelsView({ items, status: initialStatus }: { items: ParcelIte
   // cancelOrderItemAction already exists (src/app/(dashboard)/orders/actions.ts,
   // used today from the order detail page) and already revalidates both
   // queues — this just gives it a second, more convenient entry point from
-  // the row a Customer Service rep is already looking at, rather than
+  // the row a Support Agent is already looking at, rather than
   // inventing new cancel logic.
   function handleCancel(item: ParcelItem) {
     setCancellingId(item.id);

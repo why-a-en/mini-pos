@@ -17,7 +17,6 @@ import { sql } from "drizzle-orm";
 // --- Enums ---------------------------------------------------------------
 
 export const organizationStatusEnum = pgEnum("organization_status", ["active", "suspended"]);
-export const userRoleEnum = pgEnum("user_role", ["customer_service", "supplier"]);
 export const productStatusEnum = pgEnum("product_status", ["active", "archived"]);
 // See docs/adr/0001-order-item-lifecycle-and-packing.md for why this has
 // five stages, not three, and why cancelled is reachable from all of them.
@@ -149,9 +148,9 @@ export const accounts = pgTable(
 );
 
 // Which Organization a person belongs to, and what they do there. Role is
-// text rather than `userRoleEnum` because better-auth writes comma-separated
-// values for a multi-role member, which an enum cannot hold. The TypeScript
-// union in src/lib/auth survives for compile-time safety.
+// text rather than a pg enum because better-auth writes comma-separated
+// values for a multi-role member, which an enum cannot hold. `AppRole` in
+// src/lib/auth is the real union, and what gives compile-time safety.
 export const members = pgTable(
   "members",
   {
@@ -291,7 +290,7 @@ export const customers = pgTable(
   ],
 ).enableRLS();
 
-// The catalog entry — created once by Customer Service, reused across
+// The catalog entry — created once by a Support Agent, reused across
 // order items. The `modifiers` JSONB column from the first schema draft is
 // gone — modifiers are now relational, see below.
 export const products = pgTable(
@@ -406,7 +405,7 @@ export const productModifierOptions = pgTable(
   ],
 ).enableRLS();
 
-// A customer's request, logged by Customer Service — a header only. No
+// A customer's request, logged by a Support Agent — a header only. No
 // status of its own; see orderItems and
 // docs/adr/0001-order-item-lifecycle-and-packing.md for why.
 export const orders = pgTable(

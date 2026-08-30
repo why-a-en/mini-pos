@@ -57,6 +57,13 @@
       "when": 1788061175413,
       "tag": "0007_drop_legacy_auth_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788086037236,
+      "tag": "0008_retire_user_role_enum",
+      "breakpoints": true
     }
   ]
 }

@@ -104,7 +104,7 @@ export const auth = betterAuth({
     }),
 
     // Platform-level administration, which is us — not a tenant role. The
-    // functional roles (customer_service / supplier) live on `members`.
+    // functional roles (support_agent / supplier) live on `members`.
     // Two separate axes; see the migration plan §3.
     admin({
       // Allowlist rather than a populated user.role column: fewer moving

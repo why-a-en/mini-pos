@@ -7,7 +7,7 @@ status: accepted
 PRD §3 originally locked the MVP order lifecycle as
 `Pending → Purchased → Cancelled`, deliberately deferring receiving/
 packing/delivery tracking. That turned out to be wrong before MVP even
-shipped: Customer Service can't safely pack an item that hasn't
+shipped: a Support Agent can't safely pack an item that hasn't
 physically arrived, so a `Received` signal is required, not deferrable —
 which pulled `Packed` and `Completed` in with it
 (`Pending → Purchased → Received → Packed → Completed`, `Cancelled`
@@ -25,12 +25,12 @@ Modifier Option selection + quantity) carries the status.
 ## Considered and rejected
 
 - **Cancellation restricted to `Pending` only.** Rejected: it would force
-  Customer Service to push an Item through Received/Packed/Completed
+  a Support Agent to push an Item through Received/Packed/Completed
   even after everyone already knows it's not going to the Customer.
   Cancellation is reachable from any stage except Completed instead.
 - **A separate `Shipped` (in-transit) stage between Purchased and
   Received.** Rejected for MVP: it doesn't unlock any capability
-  Customer Service doesn't already have — they wait for physical arrival
+  a Support Agent doesn't already have — they wait for physical arrival
   before packing either way. Cheap to add later
   (`Purchased → Shipped → Received`) if visibility into "on the way" ever
   becomes something people actually ask for.

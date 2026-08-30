@@ -36,7 +36,7 @@ unique on the pair. `users.email` stays globally unique — that is now
 *correct*, because an email identifies a person rather than a person within
 an Organization.
 
-**2. Role moves onto the membership.** A person can be Customer Service at
+**2. Role moves onto the membership.** A person can be a Support Agent at
 one Organization and Supplier at another. Role is a property of belonging,
 not of the person.
 

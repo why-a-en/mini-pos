@@ -19,13 +19,13 @@ const [email, orgSlug, role, fullName, password] = process.argv.slice(2);
 
 if (!email || !orgSlug || !role) {
   console.error(
-    "Usage: pnpm member:add <email> <organization-slug> <customer_service|supplier> [\"Full Name\" <password>]",
+    "Usage: pnpm member:add <email> <organization-slug> <support_agent|supplier> [\"Full Name\" <password>]",
   );
   process.exit(1);
 }
 
-if (role !== "customer_service" && role !== "supplier") {
-  console.error(`Unknown role "${role}" — expected customer_service or supplier.`);
+if (role !== "support_agent" && role !== "supplier") {
+  console.error(`Unknown role "${role}" — expected support_agent or supplier.`);
   process.exit(1);
 }
 

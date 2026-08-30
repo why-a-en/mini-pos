@@ -16,7 +16,7 @@ import { auth } from "./config";
  * which a pg enum can't hold) — this union is what keeps it honest in
  * TypeScript. Distinct from `users.role`, which is platform administration.
  */
-export type AppRole = "customer_service" | "supplier";
+export type AppRole = "support_agent" | "supplier";
 
 export type SessionUser = {
   id: string;
@@ -210,12 +210,11 @@ export async function stopImpersonation(): Promise<void> {
   await auth.api.stopImpersonating({ headers: await headers() });
 }
 
-// Display-only — the stored role stays `customer_service` ("Support Agent"
-// reads better in the UI). A Record, not a ternary: adding a third role makes
-// this a compile error until the map is extended, rather than silently
+// Display labels. A Record keyed on AppRole, not a ternary: adding a role
+// makes this a compile error until the map is extended, rather than silently
 // falling through to the wrong label.
 const ROLE_LABELS: Record<AppRole, string> = {
-  customer_service: "Support Agent",
+  support_agent: "Support Agent",
   supplier: "Supplier",
 };
 
