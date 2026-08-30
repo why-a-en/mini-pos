@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { CenterTabBar } from "@/components/ui/center-tab-bar";
 import type { TabItem } from "@/components/ui/tab-bar";
 import { Toaster } from "@/components/ui/sonner";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 // Role-based tab set (PRD §4): each role's shell only shows what's relevant
 // to their job, and both roles now share the exact same shape — one
@@ -30,6 +31,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-(--content-max) flex-1 flex-col">
+      {/* Above the content, on every screen, for the whole session — a
+          platform admin must never lose track of whose data they are in. */}
+      {user.impersonatedBy && <ImpersonationBanner email={user.email} />}
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       <CenterTabBar left={[left]} right={[right]} homeHref="/home" />
       <Toaster />

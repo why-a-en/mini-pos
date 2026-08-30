@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
-import { members, organizations } from "@/db/schema";
+import { impersonationEvents, members, organizations, users } from "@/db/schema";
 import { auth } from "./config";
 
 // The boundary between better-auth and the rest of the app. Feature code
@@ -124,6 +124,90 @@ export async function setActiveOrganization(organizationId: string): Promise<voi
     body: { organizationId },
     headers: await headers(),
   });
+}
+
+// --- Support impersonation ------------------------------------------------
+//
+// Platform admins can act as a tenant's user to debug their data. Two things
+// are added on top of what the admin plugin gives us, both required by
+// ADR-0002: an append-only audit row that outlives the impersonated session,
+// and a banner (see ImpersonationBanner) so nobody mistakes a client's
+// account for their own.
+
+/** Allowlist, not a database column — there is no in-app path to becoming one. */
+export function isPlatformAdmin(userId: string): boolean {
+  return (process.env.PLATFORM_ADMIN_USER_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .includes(userId);
+}
+
+/**
+ * Starts acting as `email`'s user. Writes the audit row *after* the session
+ * swap succeeds, so a failed impersonation doesn't leave a phantom record.
+ */
+export async function startImpersonation(email: string): Promise<void> {
+  const actor = await requireUser();
+  if (!isPlatformAdmin(actor.id)) throw new Error("Not permitted.");
+
+  const [target] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!target) throw new Error(`No user with email ${email}.`);
+  if (target.id === actor.id) throw new Error("You are already yourself.");
+
+  await auth.api.impersonateUser({
+    body: { userId: target.id },
+    headers: await headers(),
+  });
+
+  const [membership] = await db
+    .select({ organizationId: members.organizationId })
+    .from(members)
+    .where(eq(members.userId, target.id))
+    .orderBy(members.createdAt)
+    .limit(1);
+
+  await db.insert(impersonationEvents).values({
+    adminUserId: actor.id,
+    targetUserId: target.id,
+    organizationId: membership?.organizationId ?? null,
+  });
+}
+
+/**
+ * Returns the admin to their own session and closes the audit row.
+ *
+ * The row is closed before the session swap, because afterwards there is no
+ * longer anything on the request identifying who was impersonating whom —
+ * `sessions.impersonated_by` disappears with the session.
+ */
+export async function stopImpersonation(): Promise<void> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  const adminUserId = session?.session.impersonatedBy;
+
+  if (session && adminUserId) {
+    const [open] = await db
+      .select({ id: impersonationEvents.id })
+      .from(impersonationEvents)
+      .where(
+        and(
+          eq(impersonationEvents.adminUserId, adminUserId),
+          eq(impersonationEvents.targetUserId, session.user.id),
+          isNull(impersonationEvents.endedAt),
+        ),
+      )
+      .orderBy(desc(impersonationEvents.startedAt))
+      .limit(1);
+
+    if (open) {
+      await db
+        .update(impersonationEvents)
+        .set({ endedAt: new Date() })
+        .where(eq(impersonationEvents.id, open.id));
+    }
+  }
+
+  await auth.api.stopImpersonating({ headers: await headers() });
 }
 
 // Display-only — the stored role stays `customer_service` ("Support Agent"

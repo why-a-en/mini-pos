@@ -2,7 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { listMemberships, logout, requireUser, setActiveOrganization } from "@/lib/auth";
+import {
+  listMemberships,
+  logout,
+  requireUser,
+  setActiveOrganization,
+  startImpersonation,
+  stopImpersonation,
+} from "@/lib/auth";
 
 export async function logoutAction() {
   await logout();
@@ -30,4 +37,26 @@ export async function switchOrganizationAction(organizationId: string) {
 
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+/**
+ * Begins acting as another user for support. Guarded inside
+ * startImpersonation() — the allowlist check is not the caller's to make.
+ */
+export async function startImpersonationAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) throw new Error("Enter an email address.");
+
+  await startImpersonation(email);
+
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+/** Returns the admin to their own session and closes the audit row. */
+export async function stopImpersonationAction() {
+  await stopImpersonation();
+
+  revalidatePath("/", "layout");
+  redirect("/settings");
 }
