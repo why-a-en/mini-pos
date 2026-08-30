@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq, isNull } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
 import { orders, orderItems, orderItemModifiers, customers } from "@/db/schema";
-import { fetchOrdersPage, type OrdersCursor, type OrdersFilters, type OrdersPage } from "./query";
+import { fetchOrdersPage, searchCustomers, type OrdersCursor, type OrdersFilters, type OrdersPage } from "./query";
+import type { WizardCustomer } from "./new-order-wizard";
 
 // Unfinished orders pile up silently if there's no ceiling — a support
 // agent who starts a new one every time a chat gets complicated and rarely
@@ -32,6 +33,19 @@ const MAX_OPEN_DRAFTS_PER_USER = 5;
  */
 export async function loadMoreOrdersAction(filters: OrdersFilters, cursor: OrdersCursor): Promise<OrdersPage> {
   return fetchOrdersPage(filters, cursor);
+}
+
+/**
+ * Customer search for the order wizard's picker — debounced from the client.
+ *
+ * An action rather than a URL param, unlike the Order log's search: the
+ * wizard holds a cart, a step and a half-configured product in client state,
+ * and none of that is anywhere durable until Save. Routing the search through
+ * the URL would re-render the route on every pause in typing, for a control
+ * that is one step of three.
+ */
+export async function searchCustomersAction(query: string): Promise<WizardCustomer[]> {
+  return searchCustomers(query);
 }
 
 /**

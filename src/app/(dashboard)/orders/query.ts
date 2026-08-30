@@ -1,13 +1,23 @@
 import "server-only";
 
-import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
 import { orders, orderItems, orderItemModifiers, customers, products, modifierOptions } from "@/db/schema";
 import type { OrderRowData } from "./orders-view";
+import type { WizardCustomer } from "./new-order-wizard";
 
 /** One screenful. Small enough that the two follow-up queries below stay
  *  cheap, large enough that the common case (a day's orders) is one page. */
 export const ORDERS_PAGE_SIZE = 30;
+
+/** How many customers the order wizard's picker shows before you type. It
+ *  matches the wizard's own browse cap — fetching more than it can display
+ *  is just payload. */
+export const CUSTOMER_BROWSE_LIMIT = 8;
+
+/** How many a search returns. A picker is for choosing one, not for reading
+ *  a report; past this the answer is "type more", not "scroll". */
+export const CUSTOMER_SEARCH_LIMIT = 20;
 
 /** Everything that narrows the log. Serialisable on purpose: the first page
  *  is built from searchParams on the server, and every later page comes back
@@ -64,6 +74,55 @@ function formatOrderDate(date: Date): string {
  *  escaped first — doing it last would double-escape the ones just added. */
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * The first customers the order wizard offers, before anything is typed,
+ * plus how many exist in total so the list can say what it is not showing.
+ */
+export async function fetchCustomerBrowse(): Promise<{ rows: WizardCustomer[]; total: number }> {
+  return withCurrentOrganization(async ({ organizationId, tx }) => {
+    const rows = await tx
+      .select({ id: customers.id, name: customers.name, phone: customers.phone, address: customers.address })
+      .from(customers)
+      .where(eq(customers.organizationId, organizationId))
+      .orderBy(asc(customers.name))
+      .limit(CUSTOMER_BROWSE_LIMIT);
+
+    const [totalRow] = await tx
+      .select({ value: count() })
+      .from(customers)
+      .where(eq(customers.organizationId, organizationId));
+
+    return { rows, total: totalRow?.value ?? rows.length };
+  });
+}
+
+/**
+ * Customer search for the order wizard's picker.
+ *
+ * This runs in SQL for the same reason the Order log's does. The wizard used
+ * to be handed the first 200 customers and filter them in the browser, so the
+ * 201st could not be found from the one screen whose entire job is finding a
+ * customer — and the picker said nothing, it just showed no rows. Anyone
+ * hitting it would reasonably conclude the customer didn't exist and create a
+ * duplicate, which is the worst available outcome for a customer record.
+ *
+ * Name and phone both match, because the field says "Name or phone".
+ */
+export async function searchCustomers(query: string): Promise<WizardCustomer[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const pattern = `%${escapeLike(q)}%`;
+
+  return withCurrentOrganization(async ({ organizationId, tx }) =>
+    tx
+      .select({ id: customers.id, name: customers.name, phone: customers.phone, address: customers.address })
+      .from(customers)
+      .where(and(eq(customers.organizationId, organizationId), or(ilike(customers.name, pattern), ilike(customers.phone, pattern))))
+      .orderBy(asc(customers.name))
+      .limit(CUSTOMER_SEARCH_LIMIT),
+  );
 }
 
 /**

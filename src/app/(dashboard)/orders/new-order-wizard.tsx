@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Screen, ScrollBody, Foot, Toolbar } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
@@ -20,7 +20,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { ErrorDialog } from "@/components/ui/error-dialog";
 import { Icon } from "@/components/icon";
 import { createProductInlineAction } from "@/app/(dashboard)/products/actions";
-import { createCustomerAction, saveOrderAction } from "./actions";
+import { createCustomerAction, saveOrderAction, searchCustomersAction } from "./actions";
 
 export interface WizardCustomer {
   id: string;
@@ -67,6 +67,16 @@ function formatPrice(price: string | null): string | undefined {
   if (!price) return undefined;
   return `${Number(price).toLocaleString()} MMK`;
 }
+
+/** How many products the picker lists before you type.
+ *
+ *  Products, unlike customers, arrive complete — the route fetches every
+ *  active one, so filtering them in the browser is a correct answer over the
+ *  whole catalog rather than over a slice of it. This cap is therefore a
+ *  display choice (don't open on a long scroll) and not a limit on what
+ *  search can reach. Customers are capped on the server instead, and searched
+ *  there — see searchCustomersAction. */
+const PRODUCT_BROWSE_CAP = 8;
 
 const STEPS = [
   { key: "customer", label: "Customer" },
@@ -128,10 +138,14 @@ function StepIndicator({ step }: { step: Step }) {
  *  detail page. */
 export function NewOrderWizard({
   customers,
+  customerTotal,
   products,
   resume,
 }: {
+  /** The browse page shown before anything is typed — not the whole table.
+   *  Searching goes to the server (see the effect below). */
   customers: WizardCustomer[];
+  customerTotal: number;
   products: WizardProduct[];
   resume?: DraftResume | null;
 }) {
@@ -165,15 +179,52 @@ export function NewOrderWizard({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const matches = customers.filter((c) => (c.name + c.phone).toLowerCase().includes(customerQuery.toLowerCase()));
-  // Unfiltered (no query typed yet), the customer list can run to hundreds —
-  // capped here rather than trimmed at the query, so search still reaches
-  // everyone once you type a character. Keeps the empty-state list short
-  // enough that "+ New customer" doesn't need scrolling to find in the first
-  // place, on top of it now living in the pinned footer below regardless.
-  const BROWSE_CAP = 8;
-  const visibleMatches = customerQuery ? matches : matches.slice(0, BROWSE_CAP);
-  const hiddenMatchCount = matches.length - visibleMatches.length;
+  // Customer search runs on the server. It used to filter the `customers`
+  // prop, which was the first 200 rows — so the 201st customer could not be
+  // found from the one screen whose whole job is finding a customer, and the
+  // picker showed no rows rather than admitting it had only looked at part of
+  // the table. The obvious next move for anyone hitting that is to create the
+  // customer again, which is how you end up with duplicate records.
+  //
+  // Results are stored with the query they answer, rather than as a bare list
+  // plus a separate "searching" flag. That makes staleness a comparison
+  // instead of a state to keep in sync: whether a search is outstanding is
+  // just "the stored query isn't the current one", which can't drift, and
+  // the effect never has to setState on the way in.
+  const [customerSearch, setCustomerSearch] = useState<{ query: string; rows: WizardCustomer[] } | null>(null);
+  const customerQ = customerQuery.trim();
+
+  useEffect(() => {
+    // Empty query needs no request — the browse page below covers it.
+    if (!customerQ) return;
+    // `cancelled` does two jobs: the timeout is cleared while typing
+    // continues (the debounce), and a response that lands after a newer
+    // query was issued is dropped — otherwise a slow "yan" arriving after a
+    // fast "yang" would show the wrong list under the right query.
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const rows = await searchCustomersAction(customerQ);
+        if (!cancelled) setCustomerSearch({ query: customerQ, rows });
+      } catch {
+        if (!cancelled) setCustomerSearch({ query: customerQ, rows: [] });
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [customerQ]);
+
+  const browsingCustomers = customerQ === "";
+  // While a new query is in flight the previous rows stay put rather than
+  // blanking — same call the Order log makes, and it keeps the list from
+  // flickering empty between keystrokes.
+  const visibleMatches = browsingCustomers ? customers : (customerSearch?.rows ?? []);
+  const customerSearching = !browsingCustomers && customerSearch?.query !== customerQ;
+  // What the browse page is holding back, so the list can say so rather than
+  // looking like the whole customer table.
+  const hiddenMatchCount = browsingCustomers ? Math.max(0, customerTotal - customers.length) : 0;
   // Same shape as the customer search above: filter client-side over the
   // already-fetched catalog, cap the unfiltered browse view so a large
   // catalog doesn't turn "add a product" into a long scroll before search
@@ -186,7 +237,7 @@ export function NewOrderWizard({
   // twice and React warned about duplicate keys.
   const allProducts = [...extraProducts.filter((e) => !products.some((p) => p.id === e.id)), ...products];
   const matchingProducts = allProducts.filter((p) => p.name.toLowerCase().includes(productQuery.toLowerCase()));
-  const visibleProducts = productQuery ? matchingProducts : matchingProducts.slice(0, BROWSE_CAP);
+  const visibleProducts = productQuery ? matchingProducts : matchingProducts.slice(0, PRODUCT_BROWSE_CAP);
   const hiddenProductCount = matchingProducts.length - visibleProducts.length;
   const existingItems = resume?.existingItems ?? [];
   const totalItemCount = existingItems.length + cart.length;
@@ -363,21 +414,35 @@ export function NewOrderWizard({
             }
           />
         </div>
-        {visibleMatches.map((c) => (
-          <CustomerRow
-            key={c.id}
-            name={c.name}
-            phone={c.phone}
-            address={c.address}
-            onClick={() => {
-              setCustomer(c);
-              setStep("items");
-            }}
+        <div className={customerSearching ? "opacity-55 transition-opacity duration-fast ease-standard" : "transition-opacity duration-fast ease-standard"}>
+          {visibleMatches.map((c) => (
+            <CustomerRow
+              key={c.id}
+              name={c.name}
+              phone={c.phone}
+              address={c.address}
+              onClick={() => {
+                setCustomer(c);
+                setStep("items");
+              }}
+            />
+          ))}
+        </div>
+        {/* An empty search result is now a real answer — the server looked at
+            every customer — so it says so, and points at the + rather than
+            leaving the obvious next move as "create a duplicate". Held back
+            until the request settles, or every pause mid-word would flash
+            "no match" at someone who is still typing. */}
+        {!browsingCustomers && !customerSearching && visibleMatches.length === 0 ? (
+          <EmptyState
+            icon="users"
+            title="No match."
+            body={`Nobody called “${customerQ}”. Add them with the + above.`}
           />
-        ))}
+        ) : null}
         {hiddenMatchCount > 0 ? (
           <p className="px-5 font-ui text-small text-text-faint">
-            Showing {BROWSE_CAP} of {matches.length} — search by name or phone to find someone else.
+            Showing {customers.length} of {customerTotal} — search by name or phone to find someone else.
           </p>
         ) : null}
       </div>
@@ -543,7 +608,7 @@ export function NewOrderWizard({
         )}
         {hiddenProductCount > 0 ? (
           <p className="px-5 font-ui text-small text-text-faint">
-            Showing {BROWSE_CAP} of {matchingProducts.length} — search by name to find another.
+            Showing {PRODUCT_BROWSE_CAP} of {matchingProducts.length} — search by name to find another.
           </p>
         ) : null}
       </div>

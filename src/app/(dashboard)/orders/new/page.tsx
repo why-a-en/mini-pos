@@ -5,6 +5,7 @@ import { withCurrentOrganization } from "@/lib/tenancy";
 import { isUuid } from "@/lib/uuid";
 import { orders, orderItems, orderItemModifiers, customers, products, modifiers, modifierOptions, productModifierOptions } from "@/db/schema";
 import { NewOrderWizard, type WizardProduct, type DraftResume } from "../new-order-wizard";
+import { fetchCustomerBrowse } from "../query";
 
 /** The Customer→Items wizard, as its own route (not a Sheet over the Orders
  *  list — see new-order-wizard.tsx's doc comment for why). Fresh order:
@@ -19,13 +20,6 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
   if (draftId !== undefined && !isUuid(draftId)) notFound();
 
   const data = await withCurrentOrganization(async ({ organizationId, tx }) => {
-    const customerRows = await tx
-      .select({ id: customers.id, name: customers.name, phone: customers.phone, address: customers.address })
-      .from(customers)
-      .where(eq(customers.organizationId, organizationId))
-      .orderBy(asc(customers.name))
-      .limit(200);
-
     const productRows = await tx
       .select({ id: products.id, name: products.name, price: products.price, sourceUrl: products.sourceUrl })
       .from(products)
@@ -66,7 +60,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
       modifierGroups: Array.from(groupsByProduct.get(p.id)?.values() ?? []),
     }));
 
-    if (!draftId) return { wizardCustomers: customerRows, wizardProducts, resume: null as DraftResume | null };
+    if (!draftId) return { wizardProducts, resume: null as DraftResume | null };
 
     // A draft is an Order with placed_at still null — resuming one that's
     // already been placed, or that belongs to another org (RLS already
@@ -84,7 +78,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
       .from(orders)
       .innerJoin(customers, eq(customers.id, orders.customerId))
       .where(and(eq(orders.id, draftId), eq(orders.organizationId, organizationId), isNull(orders.placedAt)));
-    if (!order) return { wizardCustomers: customerRows, wizardProducts, resume: undefined };
+    if (!order) return { wizardProducts, resume: undefined };
 
     const itemRows = await tx
       .select({ id: orderItems.id, quantity: orderItems.quantity, productName: products.name, productPrice: products.price })
@@ -119,10 +113,23 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
         quantity: r.quantity,
       })),
     };
-    return { wizardCustomers: customerRows, wizardProducts, resume };
+    return { wizardProducts, resume };
   });
 
   if (data.resume === undefined) notFound();
 
-  return <NewOrderWizard customers={data.wizardCustomers} products={data.wizardProducts} resume={data.resume} />;
+  // Customers are fetched separately, and only a browse page of them: the
+  // picker searches in SQL now (searchCustomersAction), so there is no reason
+  // to ship a slab of the customer table to the client and no cap that can
+  // silently hide someone from search.
+  const { rows: browseCustomers, total: customerTotal } = await fetchCustomerBrowse();
+
+  return (
+    <NewOrderWizard
+      customers={browseCustomers}
+      customerTotal={customerTotal}
+      products={data.wizardProducts}
+      resume={data.resume}
+    />
+  );
 }
