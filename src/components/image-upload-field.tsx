@@ -5,6 +5,7 @@ import { getProductImageUploadUrlAction } from "@/app/(dashboard)/products/actio
 import { useFieldControlId } from "@/components/ui/field";
 import { Icon } from "@/components/icon";
 import { cn } from "@/lib/utils";
+import { fieldShellWrapper, fieldShellInner } from "@/components/ui/field-shell";
 
 type UploadedImage = {
   id: string;
@@ -28,6 +29,14 @@ type UploadedImage = {
  * states now use the system's own density devices: `ds-working` sweeps light
  * across the tile that is uploading, and a failure is marked by the same
  * hatch that marks every other destructive/cancelled surface.
+ *
+ * The picker itself sits in the same field shell as Input and Textarea
+ * (field-shell.ts) rather than floating as a bare button on the page: in a
+ * form where every other row is a sunken bordered box with a leading glyph,
+ * an unbordered button was the one place the rhythm broke. The native
+ * `file:` button stays — it keeps the control keyboard-reachable and
+ * labelled with no JS — but it now lives *inside* the field, tuned to
+ * Button's secondary variant so it reads as a control within a control.
  */
 export function ImageUploadField({ name = "imageUrls" }: { name?: string }) {
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -60,26 +69,31 @@ export function ImageUploadField({ name = "imageUrls" }: { name?: string }) {
 
   return (
     <div className="grid gap-2">
-      <input
-        id={controlId}
-        type="file"
-        accept="image/*"
-        multiple
-        onChange={(e) => handleFiles(e.target.files)}
-        className={cn(
-          "block w-full cursor-pointer font-ui text-small text-text-muted outline-none",
-          // The native button is styled through file: rather than hidden
-          // behind a proxy control — it keeps the input keyboard-reachable
-          // and labelled with no JS. Tones and timings match Button's
-          // secondary variant, including the press, so this doesn't read as
-          // a foreign control dropped into the form.
-          "file:mr-3 file:cursor-pointer file:rounded-sm file:border file:border-line-strong file:bg-transparent",
-          "file:h-(--control-h-sm) file:px-3 file:font-ui file:text-[13px] file:font-semibold file:text-text-strong",
-          "file:transition-[background,color,scale] file:duration-fast file:ease-standard",
-          "hover:file:bg-surface-invert hover:file:text-text-invert active:file:scale-95",
-          "focus-visible:file:shadow-[var(--focus-ring)]",
-        )}
-      />
+      <div className={cn(fieldShellWrapper, "h-(--control-h-md) rounded-sm px-3")}>
+        <span aria-hidden="true" className="shrink-0 text-text-faint">
+          <Icon name="image" size={16} />
+        </span>
+        <input
+          id={controlId}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => handleFiles(e.target.files)}
+          className={cn(
+            fieldShellInner,
+            "cursor-pointer text-small text-text-muted",
+            // The native button is styled through file: rather than hidden
+            // behind a proxy control — it keeps the input keyboard-reachable
+            // and labelled with no JS. Tones and timings match Button's
+            // secondary variant, including the press, so this doesn't read as
+            // a foreign control dropped into the form.
+            "file:mr-3 file:cursor-pointer file:rounded-[5px] file:border file:border-line-strong file:bg-transparent",
+            "file:h-8 file:px-3 file:font-ui file:text-[13px] file:font-semibold file:text-text-strong",
+            "file:transition-[background,color,scale] file:duration-fast file:ease-standard",
+            "hover:file:bg-surface-invert hover:file:text-text-invert active:file:scale-95",
+          )}
+        />
+      </div>
 
       {images.length > 0 && (
         <ul className="flex list-none flex-wrap gap-2 p-0">

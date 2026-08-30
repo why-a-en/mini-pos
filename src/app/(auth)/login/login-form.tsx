@@ -26,11 +26,11 @@ export function LoginForm() {
   return (
     <div className="grid gap-4">
       <form action={formAction} className="grid gap-4">
-        <Field label="Email">
-          <Input ref={emailRef} id="email" name="email" type="email" required autoComplete="email" icon="at-sign" />
+        <Field label="Email" required>
+          <Input ref={emailRef} id="email" name="email" type="email" autoComplete="email" icon="at-sign" />
         </Field>
-        <Field label="Password">
-          <Input ref={passwordRef} id="password" name="password" type="password" required autoComplete="current-password" icon="lock" />
+        <Field label="Password" required>
+          <Input ref={passwordRef} id="password" name="password" type="password" autoComplete="current-password" icon="lock" />
         </Field>
         {state?.error && <p className="font-ui text-small text-danger">{state.error}</p>}
         <Button full type="submit" disabled={pending} icon="log-in">

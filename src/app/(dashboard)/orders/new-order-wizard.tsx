@@ -274,13 +274,13 @@ export function NewOrderWizard({
     body = addingCustomer ? (
       <div className="grid gap-3">
         <Field label="Name" required>
-          <Input value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
+          <Input icon="user" autoComplete="name" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
         </Field>
         <Field label="Phone" required>
-          <Input icon="phone" inputMode="tel" placeholder="09 …" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
+          <Input icon="phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="09 …" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} />
         </Field>
         <Field label="Address" required hint="Needed to ship the parcel once it arrives.">
-          <Textarea rows={2} value={newCustomerAddress} onChange={(e) => setNewCustomerAddress(e.target.value)} />
+          <Textarea icon="map-pin" rows={2} autoComplete="street-address" value={newCustomerAddress} onChange={(e) => setNewCustomerAddress(e.target.value)} />
         </Field>
       </div>
     ) : (
@@ -410,7 +410,7 @@ export function NewOrderWizard({
         ) : null}
 
         <Field label="Notes" hint="Optional — anything the Supplier should know">
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Textarea icon="align-left" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
       </div>
     );

@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/icon";
-import { useFieldControlId } from "@/components/ui/field";
+import { useFieldControlId, useFieldRequired } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { fieldShellWrapper, fieldShellInner } from "@/components/ui/field-shell";
 
@@ -27,9 +27,11 @@ function Input({
   disabled,
   className,
   id,
+  required,
   ...props
 }: React.ComponentProps<"input"> & { icon?: IconName; suffix?: string; invalid?: boolean }) {
   const controlId = useFieldControlId(id);
+  const isRequired = useFieldRequired(required);
   return (
     <InputGroup
       data-disabled={disabled || undefined}
@@ -43,6 +45,7 @@ function Input({
       <InputGroupInput
         id={controlId}
         disabled={disabled}
+        required={isRequired}
         aria-invalid={invalid || undefined}
         className={cn(fieldShellInner, icon ? "pr-3 pl-0" : "px-3")}
         {...props}

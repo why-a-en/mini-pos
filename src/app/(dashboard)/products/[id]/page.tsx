@@ -12,6 +12,7 @@ import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { CheckboxField } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Thumb } from "@/components/ui/thumb";
@@ -149,12 +150,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 {group.available.length > 0 && (
                   <form action={attachModifierOptionsAction} className="grid gap-2">
                     <input type="hidden" name="productId" value={product.id} />
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
                       {group.available.map((option) => (
-                        <label key={option.id} className="flex items-center gap-1.5 font-ui text-small text-text-body">
-                          <input type="checkbox" name="modifierOptionIds" value={option.id} />
+                        <CheckboxField key={option.id} name="modifierOptionIds" value={option.id}>
                           {option.value}
-                        </label>
+                        </CheckboxField>
                       ))}
                     </div>
                     <Button type="submit" variant="ghost" size="sm">
@@ -167,13 +167,13 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
             <details className="rounded-md border border-line-hairline p-3">
               <summary className="cursor-pointer font-ui text-small-strong text-text-strong">+ New modifier</summary>
-              <form action={createModifierAction} className="mt-3 grid gap-3">
+              <form action={createModifierAction} className="mt-3 grid gap-4">
                 <input type="hidden" name="productId" value={product.id} />
-                <Field label="Name" hint="e.g. Color, Size">
-                  <Input name="modifierName" required />
+                <Field label="Name" required hint="e.g. Color, Size">
+                  <Input name="modifierName" icon="tag" autoComplete="off" />
                 </Field>
-                <Field label="Options" hint="Comma-separated, e.g. Black, White, Red">
-                  <Input name="options" required />
+                <Field label="Options" required hint="Comma-separated, e.g. Black, White, Red">
+                  <Input name="options" icon="list" autoComplete="off" />
                 </Field>
                 <Button full type="submit" icon="check">
                   Create and attach
