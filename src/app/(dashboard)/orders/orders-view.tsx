@@ -1,6 +1,7 @@
 "use client";
 
-import { useQueryState } from "nuqs";
+import { useState, useTransition } from "react";
+import { debounce, useQueryState } from "nuqs";
 import { Screen, Toolbar, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { IconButton } from "@/components/ui/icon-button";
@@ -9,9 +10,12 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Row } from "@/components/ui/row";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icon";
 import { dateWindowSentence, type DateWindow } from "@/lib/date-range";
 import type { DraftResume } from "./new-order-wizard";
+import { loadMoreOrdersAction } from "./actions";
+import type { OrdersCursor, OrdersFilters } from "./query";
 
 // Order itself carries no status column — status lives on Order Item (see
 // docs/adr/0001-order-item-lifecycle-and-packing.md), since one Order can
@@ -49,31 +53,92 @@ function summarize(statuses: string[]): string {
     .join(", ");
 }
 
-export function OrdersView({ orders, canCreate, window: dateWindow }: { orders: OrderRowData[]; canCreate: boolean; window: DateWindow }) {
-  // Both filters live in the URL (nuqs) so a filtered/searched view is
-  // shareable and survives back/forward — filtering itself still happens
-  // client-side over the already-fetched page (see page.tsx), so there's no
-  // need for shallow: false here the way the Parcels status filter needs it.
-  const [q, setQ] = useQueryState("q", { defaultValue: "" });
+export function OrdersView({
+  orders,
+  nextCursor,
+  total,
+  filters,
+  canCreate,
+  window: dateWindow,
+}: {
+  /** The first page, rendered by the route. Later pages are appended below. */
+  orders: OrderRowData[];
+  nextCursor: OrdersCursor | null;
+  total: number;
+  /** Exactly what the server filtered by — forwarded verbatim to the
+   *  "Load more" action so page 2 can't be filtered differently from page 1. */
+  filters: OrdersFilters;
+  canCreate: boolean;
+  window: DateWindow;
+}) {
+  // `shallow: false` on both, which is the change that made search correct.
+  // These used to be client-only filters over whatever the fixed 50-row cap
+  // had returned — a customer whose latest order fell outside that window was
+  // simply unfindable, and the UI said "No match" rather than admitting it
+  // had only looked at part of the table. Now the URL is the query, and both
+  // filters run in SQL over every row.
+  //
+  // `debounce` is what makes that affordable: a keystroke is no longer a free
+  // client-side array filter but a server round-trip, so the URL is only
+  // written once typing pauses. nuqs keeps the input itself responsive in the
+  // meantime — the local value updates immediately, only the navigation waits.
+  const [isFiltering, startFiltering] = useTransition();
+  const [q, setQ] = useQueryState("q", {
+    defaultValue: "",
+    shallow: false,
+    limitUrlUpdates: debounce(350),
+    startTransition: startFiltering,
+  });
   const [status, setStatus] = useQueryState<OrderStatus>("status", {
     defaultValue: "all",
     parse: (v): OrderStatus => (v === "draft" || v === "placed" ? v : "all"),
     serialize: (v) => (v === "all" ? "" : v),
+    shallow: false,
+    startTransition: startFiltering,
   });
+
+  // Pages 2..n. The route re-renders page 1 whenever a filter changes, so
+  // these have to be dropped at the same moment or the list would show the
+  // new first page followed by the previous filter's tail. Comparing against
+  // the filters the server actually used is more reliable than watching the
+  // nuqs values, which update before the new page arrives.
+  const filterKey = JSON.stringify(filters);
+  const [appended, setAppended] = useState<OrderRowData[]>([]);
+  const [cursor, setCursor] = useState<OrdersCursor | null>(nextCursor);
+  const [seenKey, setSeenKey] = useState(filterKey);
+  if (seenKey !== filterKey) {
+    setSeenKey(filterKey);
+    setAppended([]);
+    setCursor(nextCursor);
+  }
+
+  const [isLoadingMore, startLoadingMore] = useTransition();
+
+  function loadMore() {
+    if (!cursor) return;
+    startLoadingMore(async () => {
+      const page = await loadMoreOrdersAction(filters, cursor);
+      setAppended((prev) => [...prev, ...page.rows]);
+      setCursor(page.nextCursor);
+    });
+  }
 
   const rangeLabel = dateWindowSentence(dateWindow);
   const dateFiltered = dateWindow.custom || dateWindow.range !== "all";
 
-  const filtered = orders
-    .filter((o) => o.customerName.toLowerCase().includes(q.toLowerCase()))
-    .filter((o) => status === "all" || (status === "draft" ? o.draft !== null : o.draft === null));
+  // No client-side filtering left — every row here already matched in SQL.
+  const filtered = [...orders, ...appended];
 
   return (
     <Screen>
       <TopBar
         brand
         title="Orders"
-        eyebrow={`${orders.length} recent`}
+        // Was `${orders.length} recent`, which reported the page size as if
+        // it were the total — with 200 orders in the table it said "50
+        // recent". Now it counts every row the current filters match, and
+        // says how many of them are on screen once that's fewer.
+        eyebrow={filtered.length < total ? `${filtered.length} of ${total}` : `${total} order${total === 1 ? "" : "s"}`}
         right={
           canCreate ? <IconButton icon="plus" label="New order" href="/orders/new" size="icon-sm" /> : null
         }
@@ -93,7 +158,11 @@ export function OrdersView({ orders, canCreate, window: dateWindow }: { orders: 
       <Toolbar className="pt-0">
         <SegmentedControl options={STATUS_SEGMENTS} value={status} onChange={(v) => setStatus(v === "all" ? null : v)} />
       </Toolbar>
-      <ScrollBody>
+      {/* The list is the previous filter's result until the server answers.
+          Fading it is what distinguishes "no matches" from "not asked yet" —
+          without it, a slow query looks like a confident wrong answer, which
+          is the exact failure this whole change set out to remove. */}
+      <ScrollBody className={isFiltering ? "opacity-55 transition-opacity duration-fast ease-standard" : "transition-opacity duration-fast ease-standard"}>
         {filtered.length === 0 ? (
           <EmptyState
             icon="receipt"
@@ -128,6 +197,26 @@ export function OrdersView({ orders, canCreate, window: dateWindow }: { orders: 
             </Row>
           ))
         )}
+
+        {/* Keyset paging, not page numbers. The log is reverse-chronological
+            and new orders land at the top, so OFFSET would shift rows under
+            the reader — place an order while someone is deep in the list and
+            they'd see a row twice. A cursor is anchored to a row, so it can't
+            drift. "Load more" also keeps the scroll position, which numbered
+            pages lose and which matters more here than anywhere: this is a
+            phone, and the rows are the full width of it. */}
+        {cursor ? (
+          <div className="px-5 py-4">
+            <Button full variant="secondary" icon="chevron-down" disabled={isLoadingMore} onClick={loadMore}>
+              {isLoadingMore ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        ) : filtered.length > 0 ? (
+          <p className="px-5 pt-3 pb-6 text-center font-ui text-small text-text-faint">
+            {filtered.length === 1 ? "That's the only order" : `That's all ${filtered.length}`}
+            {rangeLabel ? ` ${rangeLabel}` : ""}.
+          </p>
+        ) : null}
       </ScrollBody>
     </Screen>
   );

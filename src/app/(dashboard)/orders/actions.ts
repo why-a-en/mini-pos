@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, isNull } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
 import { orders, orderItems, orderItemModifiers, customers } from "@/db/schema";
+import { fetchOrdersPage, type OrdersCursor, type OrdersFilters, type OrdersPage } from "./query";
 
 // Unfinished orders pile up silently if there's no ceiling — a support
 // agent who starts a new one every time a chat gets complicated and rarely
@@ -13,6 +14,25 @@ import { orders, orderItems, orderItemModifiers, customers } from "@/db/schema";
 // not per org: this is about one agent's own follow-up queue staying
 // workable, not a shared org-wide cap.
 const MAX_OPEN_DRAFTS_PER_USER = 5;
+
+/**
+ * The next page of the Order log, for the list's "Load more".
+ *
+ * The list can't page by navigation: a new `?cursor=` would *replace* the
+ * rendered page rather than extend it, and the point of loading more is to
+ * keep what's already on screen (and the scroll position that goes with it).
+ * So the first page is rendered by the route from searchParams, and every
+ * page after it comes through here and is appended client-side.
+ *
+ * The filters arrive from the client rather than being re-derived here,
+ * which is safe: they only ever narrow, and `fetchOrdersPage` scopes to the
+ * caller's organization through `withCurrentOrganization` (with RLS behind
+ * it) no matter what is passed in. A tampered filter can hide rows from the
+ * person doing the tampering; it can't reach another org's.
+ */
+export async function loadMoreOrdersAction(filters: OrdersFilters, cursor: OrdersCursor): Promise<OrdersPage> {
+  return fetchOrdersPage(filters, cursor);
+}
 
 /**
  * Creates a Customer inline, mid-wizard (docs/PRD.md §7.1 step 2: "search
