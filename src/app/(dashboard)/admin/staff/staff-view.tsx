@@ -246,7 +246,8 @@ function ManageStaffSheet({
 
               <div className="grid gap-3">
                 {/* The recovery path, in place of self-service "forgot
-                    password" — see docs/adr/0003. */}
+                    password" — see
+                    docs/adr/0003-password-recovery-and-forced-change.md */}
                 <Button
                   full
                   variant="secondary"

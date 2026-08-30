@@ -95,9 +95,12 @@ The **first** account for a new Organization is still created out of band,
 by running `pnpm org:create`. Admin exists so that everything *after* that
 — adding staff, changing roles, suspending someone who has left — no longer
 needs a script run by us. Emailed invitations remain deferred: an Admin
-creates the account and passes the password on directly, which keeps an
-email provider out of the stack (see
-[ADR-0002](./adr/0002-multi-tenancy-mvp.md)).
+creates the account and passes a generated one-time password on directly,
+which keeps an email provider out of the stack. The account's owner must
+replace that password before doing anything else, and a forgotten one is
+reset by an Admin rather than by self-service — see
+[ADR-0002](./adr/0002-multi-tenancy-mvp.md) and
+[ADR-0003](./adr/0003-password-recovery-and-forced-change.md).
 
 ## 5. Core Concepts / Data Model
 
