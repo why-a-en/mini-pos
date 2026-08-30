@@ -6,10 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { loginAction } from "./actions";
 
-// The two seeded development accounts, migrated onto better-auth with their
-// original passwords intact. New Organizations are provisioned with
-// `pnpm org:create`; these shortcuts are dev convenience only.
+// Seeded development accounts, one per role. Ordered Admin first, matching
+// how the roles nest: Admin's access is a superset of the other two.
+// New Organizations are provisioned with `pnpm org:create`; these shortcuts
+// are dev convenience only and the block below is stripped from production
+// builds.
+//
+// `supplier@test.local` is a member of two Organizations on purpose — it is
+// the account that exercises the switcher in Settings.
 const TEST_ACCOUNTS = [
+  { label: "Admin", email: "admin@test.local", password: "password123" },
   { label: "Support Agent", email: "cs@test.local", password: "password123" },
   { label: "Supplier", email: "supplier@test.local", password: "password123" },
 ] as const;
