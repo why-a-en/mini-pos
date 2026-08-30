@@ -1,4 +1,5 @@
-import { requireUser, roleLabel } from "@/lib/auth";
+import { listMemberships, requireUser, roleLabel, type AppRole } from "@/lib/auth";
+import { OrganizationSwitcher } from "./organization-switcher";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -16,10 +17,33 @@ import { logoutAction } from "../actions";
 export default async function SettingsPage() {
   const user = await requireUser();
 
+  // Only Organizations the user can actually switch into: a suspended one
+  // would resolve to no session and bounce them to /login.
+  const switchable = (await listMemberships(user.id))
+    .filter((m) => m.status === "active")
+    .map((m) => ({
+      organizationId: m.organizationId,
+      name: m.name,
+      role: m.role as AppRole,
+      roleLabel: roleLabel(m.role as AppRole),
+    }));
+
   return (
     <Screen>
       <TopBar brand title="Settings" eyebrow={roleLabel(user.role)} />
       <ScrollBody>
+        {/* Hidden entirely for the common case of one membership — a
+            switcher with a single option is just a confusing readout. */}
+        {switchable.length > 1 && (
+          <>
+            <SectionHeader>Organization</SectionHeader>
+            <OrganizationSwitcher
+              organizations={switchable}
+              activeOrganizationId={user.organizationId}
+            />
+          </>
+        )}
+
         <SectionHeader>Appearance</SectionHeader>
         <div className="flex items-center justify-between gap-3 border-b border-line-hairline px-5 py-3">
           <span>Theme</span>
