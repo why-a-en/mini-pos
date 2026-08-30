@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/ui/search-field";
 import { OptionChips } from "@/components/ui/option-chips";
 import { QtyDial } from "@/components/ui/qty-dial";
+import { IconButton } from "@/components/ui/icon-button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { CustomerRow } from "@/components/ui/customer-row";
 import { ProductRow } from "@/components/ui/product-row";
 import { OrderItemRow } from "@/components/ui/order-item-row";
@@ -328,7 +330,7 @@ export function NewOrderWizard({
 
   if (step === "customer") {
     body = addingCustomer ? (
-      <div className="grid gap-3">
+      <div className="grid gap-4 px-5">
         <Field label="Name" required>
           <Input icon="user" autoComplete="name" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} />
         </Field>
@@ -341,8 +343,26 @@ export function NewOrderWizard({
       </div>
     ) : (
       <div className="grid gap-3">
-        <p className="font-ui text-small text-text-muted">Choose a customer to continue.</p>
-        <SearchField value={customerQuery} onChange={(e) => setCustomerQuery(e.target.value)} onClear={() => setCustomerQuery("")} placeholder="Name or phone" />
+        {/* Same search + create pairing as the Items step below. */}
+        <div className="px-5">
+          <SearchField
+            value={customerQuery}
+            onChange={(e) => setCustomerQuery(e.target.value)}
+            onClear={() => setCustomerQuery("")}
+            placeholder="Name or phone"
+            trailing={
+              <IconButton
+                icon="user-plus"
+                label="New customer"
+                variant="solid"
+                onClick={() => {
+                  setAddingCustomer(true);
+                  setNewCustomerName(customerQuery);
+                }}
+              />
+            }
+          />
+        </div>
         {visibleMatches.map((c) => (
           <CustomerRow
             key={c.id}
@@ -356,17 +376,21 @@ export function NewOrderWizard({
           />
         ))}
         {hiddenMatchCount > 0 ? (
-          <p className="font-ui text-small text-text-faint">
+          <p className="px-5 font-ui text-small text-text-faint">
             Showing {BROWSE_CAP} of {matches.length} — search by name or phone to find someone else.
           </p>
         ) : null}
       </div>
     );
-    // Pinned regardless of scroll position, same reasoning noted on Items/
-    // Review's footers below — "+ New customer" going unreachable behind a
-    // long customer list (nothing to do with list length once it's here) was
-    // the actual bug report this fixed. Back is a real, equally-weighted
-    // button here too, not the small inline text link this used to be.
+    // Only the create sub-step has a footer. "+ New customer" used to live
+    // here as a full-width pinned button, because it had gone unreachable
+    // below a long customer list — but that list is capped at BROWSE_CAP
+    // now, and the button has moved to the top of the body beside the search
+    // it belongs to, which is above the fold rather than merely pinned. With
+    // it gone there is no second action on this step (picking a customer
+    // advances), so the footer goes too and the list gets the height back.
+    // Back is still a real, equally-weighted button in the sub-step, not the
+    // small inline text link it once was.
     footer = addingCustomer ? (
       <div className="flex gap-2">
         <Button variant="secondary" icon="arrow-left" onClick={() => setAddingCustomer(false)}>
@@ -382,20 +406,7 @@ export function NewOrderWizard({
           {isPending ? "Creating…" : "Create customer"}
         </Button>
       </div>
-    ) : (
-      <Button
-        full
-        variant="secondary"
-        icon="user-plus"
-        onClick={() => {
-          setAddingCustomer(true);
-          setNewCustomerName(customerQuery);
-        }}
-        className="rounded-full"
-      >
-        + New customer
-      </Button>
-    );
+    ) : null;
   } else if (step === "items") {
     title = customer?.name ?? "Items";
     eyebrow = "Items";
@@ -403,7 +414,7 @@ export function NewOrderWizard({
       // Same shape as the Customer step's inline create: the step's body
       // becomes the form and its footer becomes Back / Create, rather than a
       // Sheet stacked over a wizard that already owns the whole screen.
-      <div className="grid gap-4">
+      <div className="grid gap-4 px-5">
         <Field label="Name" required>
           <Input icon="package" autoComplete="off" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} />
         </Field>
@@ -437,25 +448,60 @@ export function NewOrderWizard({
       </div>
     ) : (
       <div className="grid gap-3">
+        {/* The order so far — its items, then its notes. Notes belongs with
+            these and not at the foot of the step: it annotates the order,
+            and sitting last it ended up directly under whatever the product
+            search produced, so against an empty result it read as a note
+            about the product that couldn't be found. It also only appears
+            once something is on the order, since there's nothing to annotate
+            before that and a lone notes box above an untouched catalog is
+            the first thing you'd have to scroll past. */}
         {totalItemCount ? (
-          <div className="min-w-0">
-            <SectionHeader right={`${totalItemCount} items`}>On this order</SectionHeader>
-            {existingItems.map((line, i) => (
-              <OrderItemRow key={`existing-${i}`} product={line.productName} selection={line.selection} qty={line.quantity} status="Pending" />
-            ))}
-            {cart.map((line) => (
-              <OrderItemRow key={line.key} product={line.productName} selection={line.selection} qty={line.quantity} status="Pending" />
-            ))}
-          </div>
+          <>
+            <div className="min-w-0">
+              <SectionHeader right={`${totalItemCount} items`}>On this order</SectionHeader>
+              {existingItems.map((line, i) => (
+                <OrderItemRow key={`existing-${i}`} product={line.productName} selection={line.selection} qty={line.quantity} status="Pending" />
+              ))}
+              {cart.map((line) => (
+                <OrderItemRow key={line.key} product={line.productName} selection={line.selection} qty={line.quantity} status="Pending" />
+              ))}
+            </div>
+            <Field className="px-5" label="Notes" hint="Optional — anything the Supplier should know">
+              <Textarea icon="align-left" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </Field>
+          </>
         ) : null}
 
-        <p className="font-ui text-small text-text-muted">Add at least one product to continue.</p>
-        <SectionHeader>Add a product</SectionHeader>
-        {allProducts.length ? (
-          <SearchField value={productQuery} onChange={(e) => setProductQuery(e.target.value)} onClear={() => setProductQuery("")} placeholder="Search products" />
-        ) : null}
+        {/* Search and "new product" are one row: the moment you find out a
+            product isn't in the catalog is the moment you want to add it,
+            and that moment happens here, not in a button somewhere else on
+            the page. Same pairing the Orders log uses for its date filter. */}
+        <div className="px-5">
+          <SearchField
+            value={productQuery}
+            onChange={(e) => setProductQuery(e.target.value)}
+            onClear={() => setProductQuery("")}
+            placeholder="Search products"
+            trailing={
+              <IconButton
+                icon="plus"
+                label="New product"
+                variant="solid"
+                onClick={() => {
+                  setAddingProduct(true);
+                  setNewProductName(productQuery);
+                }}
+              />
+            }
+          />
+        </div>
         {allProducts.length && visibleProducts.length === 0 ? (
-          <p className="font-ui text-small text-text-muted">No products match &ldquo;{productQuery}&rdquo;.</p>
+          <EmptyState
+            icon="package"
+            title="No match."
+            body={`Nothing in the catalog called “${productQuery}”. Add it with the + above.`}
+          />
         ) : null}
         {allProducts.length ? (
           visibleProducts.map((p) => {
@@ -493,36 +539,13 @@ export function NewOrderWizard({
             );
           })
         ) : (
-          <p className="font-ui text-small text-text-muted">No active products yet — create the first one below.</p>
+          <EmptyState icon="package" title="No products yet." body="Add the first one with the + above." />
         )}
         {hiddenProductCount > 0 ? (
-          <p className="font-ui text-small text-text-faint">
+          <p className="px-5 font-ui text-small text-text-faint">
             Showing {BROWSE_CAP} of {matchingProducts.length} — search by name to find another.
           </p>
         ) : null}
-
-        {/* Sits in the body rather than the footer, unlike the Customer
-            step's "+ New customer". That footer holds one action; this one
-            already carries the commit set (Previous / Review / Save draft),
-            and a create button among them reads as a fourth way to finish.
-            The list above it is capped at BROWSE_CAP with search, so it
-            can't scroll out of reach the way the customer list did. */}
-        <Button
-          full
-          variant="secondary"
-          icon="plus"
-          onClick={() => {
-            setAddingProduct(true);
-            setNewProductName(productQuery);
-          }}
-          className="rounded-full"
-        >
-          + New product
-        </Button>
-
-        <Field label="Notes" hint="Optional — anything the Supplier should know">
-          <Textarea icon="align-left" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
       </div>
     );
     footer = addingProduct ? (
@@ -564,7 +587,7 @@ export function NewOrderWizard({
     body = (
       <div className="grid gap-3">
         <div className="min-w-0">
-          <p className="font-ui text-small text-text-muted">Check everything, then place the order.</p>
+          <p className="px-5 font-ui text-small text-text-muted">Check everything, then place the order.</p>
           <SectionHeader>Customer</SectionHeader>
           {customer ? <CustomerRow name={customer.name} phone={customer.phone} address={customer.address} /> : null}
         </div>
@@ -588,9 +611,19 @@ export function NewOrderWizard({
           ) : null}
         </div>
 
-        <Field label="Notes">
-          <p className={"font-ui text-body " + (notes ? "text-text-body" : "text-text-faint")}>{notes || "No notes added."}</p>
-        </Field>
+        {/* Read-only recap, not a control — `group` keeps the label a
+            labelled region instead of a `htmlFor` pointing at an id that no
+            element on this step carries. Absent entirely when there are no
+            notes: Review is a list of what's on the order, and a labelled
+            row saying "No notes added." is a line of chrome reporting the
+            absence of something optional. Trimmed, because saveOrderAction
+            stores whitespace-only notes as null — this would otherwise show
+            an empty row for something that won't be saved at all. */}
+        {notes.trim() ? (
+          <Field className="px-5" label="Notes" group>
+            <p className="font-ui text-body text-text-body">{notes}</p>
+          </Field>
+        ) : null}
       </div>
     );
     footer = (
@@ -615,7 +648,13 @@ export function NewOrderWizard({
       <TopBar title={title} eyebrow={eyebrow} onBack={onBack} />
       <StepIndicator step={step} />
       <ScrollBody>
-        <div className="px-5 pt-3 pb-12">{body}</div>
+        {/* No gutter here — Screen's contract is that the body doesn't get
+            one, because full-bleed rows carry their own px-5 and it is part
+            of the row rhythm. A gutter here double-padded every list in the
+            wizard, so its hairlines stopped 20px short of both screen edges
+            and the lists read as boxed-in panels rather than the lists they
+            are on every other screen. Non-row content takes `px-5` itself. */}
+        <div className="pt-3 pb-12">{body}</div>
       </ScrollBody>
       {footer ? <Foot padded>{footer}</Foot> : null}
       <ErrorDialog open={!!error} message={error} onOk={() => setError(null)} />
