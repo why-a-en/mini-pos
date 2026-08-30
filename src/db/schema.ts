@@ -110,6 +110,11 @@ export const users = pgTable(
     // admins are allowlisted by id via PLATFORM_ADMIN_USER_IDS instead, so
     // there is no in-app path to granting yourself platform admin.
     role: text("role"),
+    // Set whenever a password was chosen by someone other than its owner —
+    // account creation, or an Admin resetting a forgotten one. Cleared by a
+    // successful self-service change. This is what stops an Admin keeping
+    // standing access to a colleague's account via the password they issued.
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     banned: boolean("banned").default(false),
     banReason: text("ban_reason"),
     banExpires: timestamp("ban_expires", { withTimezone: true }),

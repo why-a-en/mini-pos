@@ -1,6 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { accounts, members, users } from "@/db/schema";
 import { hashPassword } from "@/lib/auth/hash";
+import { generateTemporaryPassword } from "./password";
 import { ServiceError, type AppRole, type ServiceContext } from "./types";
 
 // Staff management for an Organization's own Admin. No `next/*` imports —
@@ -54,16 +55,13 @@ export async function listStaff(ctx: ServiceContext): Promise<StaffMember[]> {
  */
 export async function addStaff(
   ctx: ServiceContext,
-  input: { name: string; email: string; password: string; role: AppRole },
-): Promise<StaffMember> {
+  input: { name: string; email: string; role: AppRole },
+): Promise<StaffMember & { temporaryPassword: string }> {
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
 
   if (!name) throw new ServiceError("Name is required.");
   if (!email) throw new ServiceError("Email is required.");
-  if (input.password.length < 8) {
-    throw new ServiceError("Password must be at least 8 characters.");
-  }
 
   const [existing] = await ctx.tx
     .select({ id: users.id })
@@ -77,9 +75,13 @@ export async function addStaff(
     );
   }
 
+  const temporaryPassword = generateTemporaryPassword();
+
   const [user] = await ctx.tx
     .insert(users)
-    .values({ name, email })
+    // Flagged from birth: this password was chosen by the Admin, not by
+    // the person who will use it.
+    .values({ name, email, mustChangePassword: true })
     .returning({ id: users.id, name: users.name, email: users.email });
 
   // Written by hand rather than through better-auth's sign-up endpoint,
@@ -93,7 +95,7 @@ export async function addStaff(
     accountId: user.id,
     providerId: "credential",
     userId: user.id,
-    password: await hashPassword(input.password),
+    password: await hashPassword(temporaryPassword),
   });
 
   const [member] = await ctx.tx
@@ -101,6 +103,8 @@ export async function addStaff(
     .values({ organizationId: ctx.organizationId, userId: user.id, role: input.role })
     .returning({ id: members.id, status: members.status, createdAt: members.createdAt });
 
+  // The only time this value exists in readable form. The caller shows it
+  // to the Admin once; nothing persists it.
   return {
     memberId: member.id,
     userId: user.id,
@@ -109,7 +113,51 @@ export async function addStaff(
     role: input.role,
     status: member.status,
     joinedAt: member.createdAt,
+    temporaryPassword,
   };
+}
+
+/**
+ * Issues a new temporary password for a member who has lost theirs, and
+ * flags the account so they must replace it on next sign-in.
+ *
+ * This is the recovery path, deliberately in place of self-service "forgot
+ * password": with no email provider there is no channel only the account
+ * owner controls, and an email address is not a secret. An Admin who knows
+ * who is asking is a stronger check than one who knows their address.
+ *
+ * Any Admin may reset any member, including another Admin — an Organization
+ * with two Admins can recover itself without us. Resetting your own is
+ * pointless rather than harmful (you would then be forced to change it),
+ * and the Staff screen does not offer it.
+ */
+export async function resetStaffPassword(
+  ctx: ServiceContext,
+  memberId: string,
+): Promise<{ email: string; temporaryPassword: string }> {
+  const target = await requireMember(ctx, memberId);
+  const temporaryPassword = generateTemporaryPassword();
+
+  const [account] = await ctx.tx
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.userId, target.userId), eq(accounts.providerId, "credential")))
+    .limit(1);
+
+  if (!account) throw new ServiceError("That account has no password to reset.");
+
+  await ctx.tx
+    .update(accounts)
+    .set({ password: await hashPassword(temporaryPassword), updatedAt: new Date() })
+    .where(eq(accounts.id, account.id));
+
+  const [user] = await ctx.tx
+    .update(users)
+    .set({ mustChangePassword: true, updatedAt: new Date() })
+    .where(eq(users.id, target.userId))
+    .returning({ email: users.email });
+
+  return { email: user.email, temporaryPassword };
 }
 
 export async function changeStaffRole(

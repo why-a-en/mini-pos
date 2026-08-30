@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
 import { requireUser, type AppRole } from "@/lib/auth";
 import { CenterTabBar } from "@/components/ui/center-tab-bar";
 import type { TabItem } from "@/components/ui/tab-bar";
@@ -35,6 +36,15 @@ const NAV_BY_ROLE: Record<AppRole, { left: TabItem; right: TabItem }> = {
 // src/proxy.ts and docs/TECH_STACK.md's architecture notes for why.
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
+
+  // A password someone else chose has to be replaced before anything else
+  // happens. /change-password sits in the (auth) group, outside this layout,
+  // so this cannot redirect to itself.
+  //
+  // Skipped while impersonating: a platform admin acting as this user must
+  // not be pushed into a screen that would set that user's password.
+  if (user.mustChangePassword && !user.impersonatedBy) redirect("/change-password");
+
   const { left, right } = NAV_BY_ROLE[user.role];
 
   return (

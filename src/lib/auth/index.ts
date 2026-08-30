@@ -36,6 +36,8 @@ export type SessionUser = {
   role: AppRole;
   /** Set while a platform admin is acting as this user. */
   impersonatedBy: string | null;
+  /** True until they replace a password someone else chose for them. */
+  mustChangePassword: boolean;
 };
 
 /**
@@ -62,9 +64,11 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
       role: members.role,
       memberStatus: members.status,
       organizationStatus: organizations.status,
+      mustChangePassword: users.mustChangePassword,
     })
     .from(members)
     .innerJoin(organizations, eq(organizations.id, members.organizationId))
+    .innerJoin(users, eq(users.id, members.userId))
     .where(
       and(eq(members.userId, session.user.id), eq(members.organizationId, organizationId)),
     )
@@ -86,6 +90,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     organizationId,
     role: row.role as AppRole,
     impersonatedBy: session.session.impersonatedBy ?? null,
+    mustChangePassword: row.mustChangePassword,
   };
 }
 
@@ -106,6 +111,43 @@ export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireUser();
   if (user.role !== "admin") redirect("/");
   return user;
+}
+
+/**
+ * Replaces the caller's own password.
+ *
+ * `revokeOtherSessions` is deliberately on: someone changing their password
+ * because they think another person knows it gains nothing if that person's
+ * session stays alive. Clearing `must_change_password` is what releases them
+ * from the forced-change redirect.
+ *
+ * Refused while impersonating — a platform admin acting as someone else must
+ * not be able to set that person's password and lock them out.
+ */
+export async function changeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (user.impersonatedBy) {
+    return { ok: false, error: "You can't change a password while impersonating." };
+  }
+
+  try {
+    await auth.api.changePassword({
+      body: { currentPassword, newPassword, revokeOtherSessions: true },
+      headers: await headers(),
+    });
+  } catch {
+    return { ok: false, error: "Current password is incorrect." };
+  }
+
+  await db
+    .update(users)
+    .set({ mustChangePassword: false, updatedAt: new Date() })
+    .where(eq(users.id, user.id));
+
+  return { ok: true };
 }
 
 export type LoginResult = { ok: true } | { ok: false; error: string };

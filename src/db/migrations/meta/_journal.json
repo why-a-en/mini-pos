@@ -71,6 +71,13 @@
       "when": 1788086983543,
       "tag": "0009_member_status",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788102751579,
+      "tag": "0010_must_change_password",
+      "breakpoints": true
     }
   ]
 }

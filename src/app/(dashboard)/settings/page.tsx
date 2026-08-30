@@ -6,6 +6,8 @@ import { TopBar } from "@/components/ui/top-bar";
 import { SectionHeader } from "@/components/ui/section-header";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { Row } from "@/components/ui/row";
+import { Icon } from "@/components/icon";
 import { logoutAction } from "../actions";
 
 // Phase-1 scope only: the design kit's fuller SettingsScreen also has a
@@ -67,6 +69,11 @@ export default async function SettingsPage() {
             <ImpersonationForm />
           </>
         )}
+
+        <Row href="/change-password">
+          <span className="flex-1">Change password</span>
+          <Icon name="chevron-right" size={16} className="shrink-0 text-text-faint" />
+        </Row>
 
         <div className="px-5 pt-5 pb-8">
           <form action={logoutAction}>

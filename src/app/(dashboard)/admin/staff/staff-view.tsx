@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
@@ -24,6 +24,7 @@ import {
   addStaffAction,
   changeStaffRoleAction,
   removeStaffAction,
+  resetStaffPasswordAction,
   setStaffStatusAction,
 } from "./actions";
 
@@ -48,7 +49,6 @@ export function StaffView({
 }) {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<StaffMember | null>(null);
-  const closeAdd = useCallback(() => setAdding(false), []);
 
   return (
     <Screen>
@@ -91,7 +91,7 @@ export function StaffView({
         </div>
       </ScrollBody>
 
-      <AddStaffSheet open={adding} onOpenChange={setAdding} onAdded={closeAdd} />
+      <AddStaffSheet open={adding} onOpenChange={setAdding} />
       <ManageStaffSheet member={selected} onClose={() => setSelected(null)} />
     </Screen>
   );
@@ -100,34 +100,44 @@ export function StaffView({
 function AddStaffSheet({
   open,
   onOpenChange,
-  onAdded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdded: () => void;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       {/* The form only exists while the sheet is open, so useActionState is
-          fresh on every open. Keeping it mounted would leave the previous
-          submit's result behind, and the success effect below would close
-          the sheet again the instant it reopened. */}
-      <SheetContent>{open && <AddStaffForm onAdded={onAdded} />}</SheetContent>
+          fresh on every open — otherwise the previous submit's generated
+          password would still be on screen the next time it opened. */}
+      <SheetContent>
+        {open && <AddStaffForm onDone={() => onOpenChange(false)} />}
+      </SheetContent>
     </Sheet>
   );
 }
 
-function AddStaffForm({ onAdded }: { onAdded: () => void }) {
+function AddStaffForm({ onDone }: { onDone: () => void }) {
   const [role, setRole] = useState<AppRole>("support_agent");
   const [state, formAction, pending] = useActionState(addStaffAction, undefined);
 
-  // Closing is driven by the action's own result, so the sheet can't close
-  // over a failed submit. It has to happen in an effect rather than during
-  // render — calling the parent's setState while rendering this component is
-  // exactly what React warns about.
-  useEffect(() => {
-    if (state && !state.error) onAdded();
-  }, [state, onAdded]);
+  // On success the sheet does NOT close by itself: the temporary password is
+  // the only thing standing between the new hire and their account, it is
+  // shown exactly once, and closing over it would lose it for good.
+  if (state?.temporaryPassword) {
+    return (
+      <>
+        <SheetHeader title="Staff added" />
+        <SheetBody>
+          <IssuedPassword email={state.email!} password={state.temporaryPassword} />
+        </SheetBody>
+        <SheetFooter>
+          <Button full onClick={onDone}>
+            Done
+          </Button>
+        </SheetFooter>
+      </>
+    );
+  }
 
   return (
     <>
@@ -140,20 +150,11 @@ function AddStaffForm({ onAdded }: { onAdded: () => void }) {
           <Field label="Email" required>
             <Input name="email" type="email" autoComplete="off" icon="at-sign" />
           </Field>
-          <Field
-            label="Temporary password"
-            required
-            hint="Give this to them directly — no invitation email is sent."
-          >
-            <Input name="password" type="text" autoComplete="off" icon="lock" />
-          </Field>
           <Field label="Role" required>
             <SegmentedControl options={ROLE_OPTIONS} value={role} onChange={setRole} />
             <input type="hidden" name="role" value={role} />
           </Field>
-          {state?.error && (
-            <p className="font-ui text-small text-danger">{state.error}</p>
-          )}
+          {state?.error && <p className="font-ui text-small text-danger">{state.error}</p>}
         </SheetBody>
         <SheetFooter>
           <Button full type="submit" disabled={pending}>
@@ -165,6 +166,21 @@ function AddStaffForm({ onAdded }: { onAdded: () => void }) {
   );
 }
 
+/** Shown once. Nothing stores this in readable form, here or on the server. */
+function IssuedPassword({ email, password }: { email: string; password: string }) {
+  return (
+    <div className="grid gap-3">
+      <p className="font-ui text-small text-text-body">
+        Give this to <span className="font-medium">{email}</span>. It is shown once, and
+        they must replace it the first time they sign in.
+      </p>
+      <p className="rounded-md border border-line-hairline bg-surface-raised px-4 py-3 text-center font-mono text-code tracking-label select-all">
+        {password}
+      </p>
+    </div>
+  );
+}
+
 function ManageStaffSheet({
   member,
   onClose,
@@ -173,6 +189,12 @@ function ManageStaffSheet({
   onClose: () => void;
 }) {
   const [pending, startTransition] = useTransition();
+  const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
+
+  function close() {
+    setIssued(null);
+    onClose();
+  }
 
   function run(action: () => Promise<{ error?: string }>) {
     startTransition(async () => {
@@ -187,8 +209,26 @@ function ManageStaffSheet({
     });
   }
 
+  if (issued) {
+    return (
+      <Sheet open onOpenChange={(open) => !open && close()}>
+        <SheetContent>
+          <SheetHeader title="New password" />
+          <SheetBody>
+            <IssuedPassword email={issued.email} password={issued.password} />
+          </SheetBody>
+          <SheetFooter>
+            <Button full onClick={close}>
+              Done
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
   return (
-    <Sheet open={member !== null} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={member !== null} onOpenChange={(open) => !open && close()}>
       <SheetContent>
         {member && (
           <>
@@ -205,6 +245,26 @@ function ManageStaffSheet({
               </Field>
 
               <div className="grid gap-3">
+                {/* The recovery path, in place of self-service "forgot
+                    password" — see docs/adr/0003. */}
+                <Button
+                  full
+                  variant="secondary"
+                  disabled={pending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const result = await resetStaffPasswordAction(member.memberId);
+                      if (result.error) {
+                        toast.error(result.error);
+                        return;
+                      }
+                      setIssued({ email: result.email!, password: result.temporaryPassword! });
+                    })
+                  }
+                >
+                  Reset password
+                </Button>
+
                 <Button
                   full
                   variant="secondary"

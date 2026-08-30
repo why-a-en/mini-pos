@@ -69,6 +69,8 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
+    // One place for the rule, rather than each caller inventing its own.
+    minPasswordLength: 8,
     // Keeps the existing argon2 hashes working, so migrating users never see
     // a forced password reset. better-auth's own default is scrypt; ours
     // stays argon2id (hash.ts) and the stored hashes move across verbatim.
