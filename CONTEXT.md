@@ -1,7 +1,7 @@
 # Mini POS
 
-An internal tool for a Myanmar-based cross-border resale business: Customer
-Service logs customer requests against a Product catalog; Suppliers buy the
+An internal tool for a Myanmar-based cross-border resale business: Support
+Agents log customer requests against a Product catalog; Suppliers buy the
 Products from Lazada/TikTok Shop; Support Agents pack and ship the
 purchased items to the real Customer once they arrive.
 
@@ -12,6 +12,15 @@ any other Organization's data. Called "vendor" earlier in this project's
 history; renamed to avoid colliding with the unrelated "Supplier" role
 below.
 _Avoid_: Vendor, tenant, account, business.
+
+**Admin**: The staff role that runs an Organization from the inside —
+manages its staff, edits its details, and reads its reports. Access is a
+*superset* of the other two roles, so an Admin who also logs Orders needs
+one account rather than two. Scoped to their own Organization like any
+member: an Admin has no visibility into anyone else's.
+_Avoid_: Owner (considered and dropped), superadmin, manager. Not to be
+confused with **platform administration** — that's us operating the
+service, gated by an environment allowlist, and no in-app role grants it.
 
 **Support Agent**: The staff role that talks to real Customers,
 maintains the Product catalog, logs Orders on their behalf, and packs and

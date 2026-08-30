@@ -20,13 +20,13 @@ const [name, email, fullName, password, role = "support_agent"] = process.argv.s
 
 if (!name || !email || !fullName || !password) {
   console.error(
-    'Usage: pnpm org:create "<Organization>" <email> "<Full Name>" <password> [support_agent|supplier]',
+    'Usage: pnpm org:create "<Organization>" <email> "<Full Name>" <password> [admin|support_agent|supplier]',
   );
   process.exit(1);
 }
 
-if (role !== "support_agent" && role !== "supplier") {
-  console.error(`Unknown role "${role}" — expected support_agent or supplier.`);
+if (role !== "admin" && role !== "support_agent" && role !== "supplier") {
+  console.error(`Unknown role "${role}" — expected admin, support_agent or supplier.`);
   process.exit(1);
 }
 

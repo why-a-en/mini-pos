@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { requireUser } from "@/lib/auth";
+import { requireUser, type AppRole } from "@/lib/auth";
 import { CenterTabBar } from "@/components/ui/center-tab-bar";
 import type { TabItem } from "@/components/ui/tab-bar";
 import { Toaster } from "@/components/ui/sonner";
@@ -12,7 +12,15 @@ import { ImpersonationBanner } from "@/components/impersonation-banner";
 // targets in one bar, so everything else (for supplier: History, Products,
 // Customers — for support_agent: Parcels, Products, Customers) moved to
 // shortcuts on Home instead.
-const NAV_BY_ROLE: Record<string, { left: TabItem; right: TabItem }> = {
+// Keyed on AppRole, not string: a role without an entry here would have
+// been an undefined lookup and a runtime crash on the destructure below.
+const NAV_BY_ROLE: Record<AppRole, { left: TabItem; right: TabItem }> = {
+  // Admin leads with Orders, same as Support Agent — the business record is
+  // the thing they check most. Everything admin-specific hangs off Home.
+  admin: {
+    left: { href: "/orders", label: "Orders", icon: "receipt" },
+    right: { href: "/settings", label: "Settings", icon: "settings" },
+  },
   support_agent: {
     left: { href: "/orders", label: "Orders", icon: "receipt" },
     right: { href: "/settings", label: "Settings", icon: "settings" },

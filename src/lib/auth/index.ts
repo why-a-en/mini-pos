@@ -14,9 +14,21 @@ import { auth } from "./config";
  * The functional role, within an Organization. Stored on `members.role` as
  * text (better-auth writes comma-separated values for multi-role members,
  * which a pg enum can't hold) — this union is what keeps it honest in
- * TypeScript. Distinct from `users.role`, which is platform administration.
+ * TypeScript.
+ *
+ * **Two different things are called "admin" in this codebase, and they are
+ * not related:**
+ *
+ * - `AppRole = "admin"` (here) — a *tenant* role. The reseller's own
+ *   administrator: manages their staff, sees their reports. Scoped to one
+ *   Organization like any other member, and holds no power outside it.
+ * - `users.role` / `PLATFORM_ADMIN_USER_IDS` — *platform* administration.
+ *   That's us, the operator, and it's what gates impersonation.
+ *
+ * A tenant admin can never become a platform admin; the latter is an
+ * environment allowlist with no in-app path to it.
  */
-export type AppRole = "support_agent" | "supplier";
+export type AppRole = "admin" | "support_agent" | "supplier";
 
 export type SessionUser = {
   id: string;
@@ -214,6 +226,7 @@ export async function stopImpersonation(): Promise<void> {
 // makes this a compile error until the map is extended, rather than silently
 // falling through to the wrong label.
 const ROLE_LABELS: Record<AppRole, string> = {
+  admin: "Admin",
   support_agent: "Support Agent",
   supplier: "Supplier",
 };

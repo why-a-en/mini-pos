@@ -4,6 +4,8 @@ import type { AppRole } from "@/lib/auth";
 // controls which timezone timestamps render in for a given role. A fixed
 // role→timezone mapping, not a per-user setting, per that decision.
 const ROLE_TIMEZONES: Record<AppRole, string> = {
+  // Admins run the reselling business itself, so they sit with Support.
+  admin: "Asia/Yangon", // Myanmar time (MMT, UTC+6:30)
   supplier: "Asia/Bangkok", // Thailand time (ICT, UTC+7)
   support_agent: "Asia/Yangon", // Myanmar time (MMT, UTC+6:30)
 };

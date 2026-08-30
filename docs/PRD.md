@@ -15,8 +15,8 @@ The business model today:
    modifiers (color, size, variant, etc.) and quantity in chat.
 3. A **Supplier** has to go find and purchase that exact item on Lazada or
    TikTok Shop — usually by searching with the image the customer sent.
-4. There's a shared chat group between the Supplier and **Customer
-   Service**. A Support Agent posts each customer's order into that group
+4. There's a shared chat group between the Supplier and the
+   **Support Agents**. A Support Agent posts each customer's order into that group
    as a message: a screenshot + product info + modifiers + quantity.
 5. The Supplier scrolls the group, manually reads every message, and tracks
    in their head (or notes) what still needs to be bought.
@@ -67,29 +67,37 @@ tool where:
 | Order structure | An **Order** can hold **multiple Products**, each its own **Order Item** (Product + modifier selection + quantity), each with its **own** status — not one status per Order. Every Order Item must reference a catalog Product; no ad-hoc/one-off items without a Product record. |
 | Modifiers | **Structured, not free text.** A Modifier (e.g. "Color") is a reusable, Organization-wide catalog with a global list of Options; each Product picks the subset of a Modifier's Options that apply to it. |
 | Customer | **A real, searchable entity** (name + phone + address) — not free text re-typed on every order. |
-| Roles & permissions | **Two real roles** (Support Agent, Supplier), each with its own default views — **not** a granular permission system. Both roles can technically perform any action; the split is about what you land on, not what you're blocked from. |
-| Account creation | **Out of band for MVP.** No in-app "add a teammate" screen — new logins are created via a script, run by whoever's setting the account up. |
+| Roles & permissions | **Three roles** (Admin, Support Agent, Supplier), each with its own default views — **not** a granular permission system. The split is mostly about what you land on rather than what you're blocked from; the exception is Admin, whose staff-management screens are genuinely gated. |
+| Account creation | **First account out of band, staff management in-app.** A new Organization's first login is created by script (`pnpm org:create`); after that an Admin adds and manages staff from within the app. No emailed invitations — the Admin sets a password and passes it on directly, keeping an email provider out of the stack. |
 | Customer-facing access | **None.** Customers stay in chat/social media; they are not platform users in the MVP (see idea in §9). |
 
 ## 4. Users & Roles
 
-Two roles, each landing on a different default view — the split is about
-UX, not access control:
+Three roles, each landing on a different default view. For Support Agent and
+Supplier the split is about UX rather than access control; Admin is the one
+role that unlocks something the others genuinely cannot reach.
 
 | Role | Who | Lands on | Can do |
 |---|---|---|---|
+| **Admin** | The reseller's own administrator — usually the owner, who also works day to day | The Order log | Everything both other roles can do, plus manage their Organization's staff and edit its details. A **superset**, so one person doesn't need two accounts |
 | **Support Agent** | Staff handling customer chats, product upkeep, and packing | The Order log | Create/edit products (incl. Modifiers); create Orders/Customers; view & filter all Orders; work the **Packing Queue** (Received → Packed → Completed) |
 | **Supplier** | Staff who purchases from Lazada/TikTok Shop | The **Purchase Queue** | View/search products; batch-mark Order Items Purchased, grouped by Product across every Order and Customer; view Order history |
 
-Both roles can technically reach any screen/action — there's no backend
-permission matrix — but each role's navigation shows/hides what's
-relevant to their job (e.g. Supplier doesn't see a "Create Product"
-button in their nav).
+Support Agent and Supplier can technically reach any operational
+screen/action — there's no backend permission matrix — but each role's
+navigation shows/hides what's relevant to their job (e.g. Supplier doesn't
+see a "Create Product" button in their nav).
 
-No third "Admin" role for MVP. New staff accounts (Support Agent or
-Supplier) are created by running a script against the database directly,
-not through an in-app screen — deliberately, to avoid building
-account-management UI for a team of two or three people.
+Admin is different: its staff-management screens check the role on the
+server, not just in navigation. Hiding a shortcut is not access control.
+
+The **first** account for a new Organization is still created out of band,
+by running `pnpm org:create`. Admin exists so that everything *after* that
+— adding staff, changing roles, suspending someone who has left — no longer
+needs a script run by us. Emailed invitations remain deferred: an Admin
+creates the account and passes the password on directly, which keeps an
+email provider out of the stack (see
+[ADR-0002](./adr/0002-multi-tenancy-mvp.md)).
 
 ## 5. Core Concepts / Data Model
 
@@ -268,8 +276,8 @@ today."
 
 ## 8. Non-Functional Requirements
 
-- **Mobile-first, not just mobile-friendly.** Hard requirement — Customer
-  Service and the Supplier use this primarily on phones. Every screen is
+- **Mobile-first, not just mobile-friendly.** Hard requirement — Support
+  Agents and the Supplier use this primarily on phones. Every screen is
   designed for the smallest target size first (~320–375px), then
   progressively enhanced upward.
 - **Performant and robust on real-world phone browsers.** Reliable on
@@ -298,8 +306,8 @@ today."
    the first thing to revisit post-MVP.
 4. **Multi-Supplier support with claiming.** If a second Supplier joins,
    an explicit "claim" action prevents two people buying the same item.
-5. **Customer-facing lookup.** A simple, no-login page/link Customer
-   Service can send a customer to see their own order status — more
+5. **Customer-facing lookup.** A simple, no-login page/link a Support
+   Agent can send a customer to see their own order status — more
    feasible now that Customer is a real entity, but still deferred.
 6. **Ad-hoc Order Items without a pre-made Product.** For rare one-off
    items not worth cataloging.
