@@ -37,7 +37,14 @@ export function Row({
   className?: string;
 }) {
   const shell = cn(
-    "w-full flex-nowrap gap-3 rounded-none border-0 border-b border-line-hairline px-5 py-3 text-left",
+    // `min-w-0` is load-bearing on the `onClick` branch. A grid/flex item's
+    // automatic minimum size is its min-content size, and a `<button>` won't
+    // shrink below its contents without being told to — so a row inside the
+    // order wizard's `grid gap-3` sized its track to the longest customer
+    // address on file (1253px inside a 375px screen) and every row in the
+    // list ran off the edge, `truncate` and all. The `<div>`/`<Link>`
+    // branches don't need it; it costs them nothing.
+    "w-full min-w-0 flex-nowrap gap-3 rounded-none border-0 border-b border-line-hairline px-5 py-3 text-left",
     "transition-colors duration-fast ease-standard",
     // A full-bleed row highlights rather than scales — shrinking something
     // pinned to both screen edges reads as a glitch. `active:` is spelled out

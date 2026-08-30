@@ -73,12 +73,31 @@ export function ScrollBody({ children, className }: { children?: ReactNode; clas
           min-width: 0 (see the row components and the wizard's Review step
           for the actual class of bug) can still force a descendant wider
           than the screen; this guarantees that never becomes a *page-level*
-          horizontal scrollbar. */}
+          horizontal scrollbar.
+
+          `[&>div]:block!` on the injected child is the fix for a different
+          bug, and it is load-bearing. Radix wraps a Viewport's
+          children in its own `<div style="min-width:100%; display:table">`,
+          deliberately: a table box shrink-wraps to its content, which is how
+          a ScrollArea gets something wider than itself to scroll to.
+
+          This app never wants that — ScrollBody is a vertical scroller, and
+          the line above clips the x axis rather than scrolling it. But the
+          table box still sized itself to content, so it became the
+          containing block for every row, and a row's `truncate` had nothing
+          to truncate *against*: one customer with a long address stretched
+          the box to 1223px inside a 375px screen and every row in the list
+          silently ran off the edge (visible on /customers and on the order
+          wizard's customer step, which share CustomerRow).
+
+          Forcing it back to a block makes `min-width:100%` resolve to the
+          viewport's width, which is what `truncate` needs. It has to be
+          `!important` because Radix sets that display inline. */}
       <ScrollAreaPrimitive.Viewport
         ref={ref}
         onScroll={measure}
         data-slot="scroll-area-viewport"
-        className="size-full overflow-x-hidden outline-none [overscroll-behavior:contain]"
+        className="size-full overflow-x-hidden outline-none [overscroll-behavior:contain] [&>div]:block!"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
