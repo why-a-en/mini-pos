@@ -17,6 +17,7 @@ import { OrderItemRow } from "@/components/ui/order-item-row";
 import { SectionHeader } from "@/components/ui/section-header";
 import { ErrorDialog } from "@/components/ui/error-dialog";
 import { Icon } from "@/components/icon";
+import { createProductInlineAction } from "@/app/(dashboard)/products/actions";
 import { createCustomerAction, saveOrderAction } from "./actions";
 
 export interface WizardCustomer {
@@ -142,6 +143,17 @@ export function NewOrderWizard({
   const [newCustomerAddress, setNewCustomerAddress] = useState("");
   const [customer, setCustomer] = useState<WizardCustomer | null>(resume?.customer ?? null);
 
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductDescription, setNewProductDescription] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState("");
+  const [newProductSourceUrl, setNewProductSourceUrl] = useState("");
+  // Products created inline during this wizard run. The `products` prop is a
+  // server snapshot taken when the route rendered; a product created here
+  // has to join the list the Items step is filtering over without a
+  // navigation, or the thing you just made isn't there to add.
+  const [extraProducts, setExtraProducts] = useState<WizardProduct[]>([]);
+
   const [cart, setCart] = useState<CartLine[]>([]);
   const [notes, setNotes] = useState(resume?.notes ?? "");
   const [picking, setPicking] = useState<WizardProduct | null>(null);
@@ -164,7 +176,14 @@ export function NewOrderWizard({
   // already-fetched catalog, cap the unfiltered browse view so a large
   // catalog doesn't turn "add a product" into a long scroll before search
   // was even tried.
-  const matchingProducts = products.filter((p) => p.name.toLowerCase().includes(productQuery.toLowerCase()));
+  // A Server Action re-renders the current route as part of its response, so
+  // `products` usually comes back already containing anything created here —
+  // but not always (the action can resolve before that payload is applied),
+  // and holding it locally is what makes the new product appear instantly.
+  // Keeping both means deduping: without this the list rendered the same id
+  // twice and React warned about duplicate keys.
+  const allProducts = [...extraProducts.filter((e) => !products.some((p) => p.id === e.id)), ...products];
+  const matchingProducts = allProducts.filter((p) => p.name.toLowerCase().includes(productQuery.toLowerCase()));
   const visibleProducts = productQuery ? matchingProducts : matchingProducts.slice(0, BROWSE_CAP);
   const hiddenProductCount = matchingProducts.length - visibleProducts.length;
   const existingItems = resume?.existingItems ?? [];
@@ -180,7 +199,7 @@ export function NewOrderWizard({
     else priceTotal += Number(line.price) * line.quantity;
   }
   for (const line of cart) {
-    const price = products.find((p) => p.id === line.productId)?.price;
+    const price = allProducts.find((p) => p.id === line.productId)?.price;
     if (price == null) hasUnpricedItem = true;
     else priceTotal += Number(price) * line.quantity;
   }
@@ -194,6 +213,43 @@ export function NewOrderWizard({
         setStep("items");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't create that customer.");
+      }
+    });
+  }
+
+  /** Mirrors handleCreateCustomer: create, drop the row into local state,
+   *  and land the agent where they can immediately use it. Here that means
+   *  opening the new product's picker straight away — it has no modifiers,
+   *  so "Add item" is live on the spot and the only remaining decision is
+   *  quantity. */
+  function handleCreateProduct() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const created = await createProductInlineAction({
+          name: newProductName,
+          description: newProductDescription,
+          price: newProductPrice,
+          sourceUrl: newProductSourceUrl,
+        });
+        const product: WizardProduct = { ...created, modifierGroups: [] };
+        setExtraProducts((prev) => [product, ...prev]);
+        setAddingProduct(false);
+        setNewProductName("");
+        setNewProductDescription("");
+        setNewProductPrice("");
+        setNewProductSourceUrl("");
+        // Narrow the list to the new product rather than clearing the
+        // query. Cleared, it lands wherever the refreshed catalog sorts it —
+        // for anything past the third product that is below the fold, with
+        // its picker open somewhere the agent can't see. Filtered, the thing
+        // just created is the only row, at the top, already expanded.
+        setProductQuery(created.name);
+        setPicking(product);
+        setSelections({});
+        setQty(1);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't create that product.");
       }
     });
   }
@@ -343,7 +399,43 @@ export function NewOrderWizard({
   } else if (step === "items") {
     title = customer?.name ?? "Items";
     eyebrow = "Items";
-    body = (
+    body = addingProduct ? (
+      // Same shape as the Customer step's inline create: the step's body
+      // becomes the form and its footer becomes Back / Create, rather than a
+      // Sheet stacked over a wizard that already owns the whole screen.
+      <div className="grid gap-4">
+        <Field label="Name" required>
+          <Input icon="package" autoComplete="off" value={newProductName} onChange={(e) => setNewProductName(e.target.value)} />
+        </Field>
+        <Field label="Description" required>
+          <Textarea icon="align-left" rows={2} value={newProductDescription} onChange={(e) => setNewProductDescription(e.target.value)} />
+        </Field>
+        <Field label="Source URL" hint="Link to the exact Lazada/TikTok Shop listing.">
+          <Input
+            type="url"
+            icon="link"
+            placeholder="https://…"
+            value={newProductSourceUrl}
+            onChange={(e) => setNewProductSourceUrl(e.target.value)}
+          />
+        </Field>
+        <Field label="Price" hint="Optional, MMK">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            min="0"
+            icon="coins"
+            suffix="MMK"
+            value={newProductPrice}
+            onChange={(e) => setNewProductPrice(e.target.value)}
+          />
+        </Field>
+        <p className="font-ui text-small text-text-faint">
+          Photos and modifiers can be added on the product&rsquo;s own page later — neither is needed to put it on this order.
+        </p>
+      </div>
+    ) : (
       <div className="grid gap-3">
         {totalItemCount ? (
           <div className="min-w-0">
@@ -359,13 +451,13 @@ export function NewOrderWizard({
 
         <p className="font-ui text-small text-text-muted">Add at least one product to continue.</p>
         <SectionHeader>Add a product</SectionHeader>
-        {products.length ? (
+        {allProducts.length ? (
           <SearchField value={productQuery} onChange={(e) => setProductQuery(e.target.value)} onClear={() => setProductQuery("")} placeholder="Search products" />
         ) : null}
-        {products.length && visibleProducts.length === 0 ? (
+        {allProducts.length && visibleProducts.length === 0 ? (
           <p className="font-ui text-small text-text-muted">No products match &ldquo;{productQuery}&rdquo;.</p>
         ) : null}
-        {products.length ? (
+        {allProducts.length ? (
           visibleProducts.map((p) => {
             const expanded = picking?.id === p.id;
             const allSelected = p.modifierGroups.every((g) => selections[g.id]);
@@ -401,7 +493,7 @@ export function NewOrderWizard({
             );
           })
         ) : (
-          <p className="font-ui text-small text-text-muted">No active products yet — add one from the Products tab first.</p>
+          <p className="font-ui text-small text-text-muted">No active products yet — create the first one below.</p>
         )}
         {hiddenProductCount > 0 ? (
           <p className="font-ui text-small text-text-faint">
@@ -409,12 +501,46 @@ export function NewOrderWizard({
           </p>
         ) : null}
 
+        {/* Sits in the body rather than the footer, unlike the Customer
+            step's "+ New customer". That footer holds one action; this one
+            already carries the commit set (Previous / Review / Save draft),
+            and a create button among them reads as a fourth way to finish.
+            The list above it is capped at BROWSE_CAP with search, so it
+            can't scroll out of reach the way the customer list did. */}
+        <Button
+          full
+          variant="secondary"
+          icon="plus"
+          onClick={() => {
+            setAddingProduct(true);
+            setNewProductName(productQuery);
+          }}
+          className="rounded-full"
+        >
+          + New product
+        </Button>
+
         <Field label="Notes" hint="Optional — anything the Supplier should know">
           <Textarea icon="align-left" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
       </div>
     );
-    footer = (
+    footer = addingProduct ? (
+      <div className="flex gap-2">
+        <Button variant="secondary" icon="arrow-left" onClick={() => setAddingProduct(false)}>
+          Back
+        </Button>
+        <Button
+          full
+          icon="plus"
+          disabled={!newProductName || !newProductDescription || isPending}
+          onClick={handleCreateProduct}
+          className="flex-1 rounded-full shadow-raised"
+        >
+          {isPending ? "Creating…" : "Create product"}
+        </Button>
+      </div>
+    ) : (
       <div className="grid gap-2">
         <div className="flex gap-2">
           <Button variant="secondary" icon="arrow-left" onClick={() => (resume ? router.push("/orders") : setStep("customer"))}>
