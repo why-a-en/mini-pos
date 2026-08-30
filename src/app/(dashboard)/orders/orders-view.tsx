@@ -90,7 +90,7 @@ export function OrdersView({ orders, canCreate, window: dateWindow }: { orders: 
           trailing={<DateRangeFilter window={dateWindow} />}
         />
       </Toolbar>
-      <Toolbar>
+      <Toolbar className="pt-0">
         <SegmentedControl options={STATUS_SEGMENTS} value={status} onChange={(v) => setStatus(v === "all" ? null : v)} />
       </Toolbar>
       <ScrollBody>

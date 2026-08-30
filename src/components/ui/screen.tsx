@@ -27,10 +27,20 @@ export function Screen({ children, grain = true, className }: { children?: React
 }
 
 /** Fixed strip between the TopBar and the scroll body — segmented controls,
- *  filter bars, a search field. Gutters on the sides, none at the top: the
- *  TopBar's own bottom edge is the spacing. */
+ *  filter bars, a search field. Gutters on all sides.
+ *
+ *  It used to claim no top gutter was needed, on the grounds that "the
+ *  TopBar's own bottom edge is the spacing" — but TopBar has no bottom
+ *  padding, so a toolbar sat flush against its hairline and the first
+ *  control read as welded to the header. The screens that predated this
+ *  component each papered over it with their own `pt-*`, which is how they
+ *  ended up with four different values.
+ *
+ *  Stacked strips are the exception: a second Toolbar directly under the
+ *  first belongs to the same control block, so it opts out with `pt-0`
+ *  rather than drifting away from the one above it. */
 export function Toolbar({ children, className }: { children?: ReactNode; className?: string }) {
-  return <div className={cn("relative shrink-0 px-5 pb-3", className)}>{children}</div>;
+  return <div className={cn("relative shrink-0 px-5 pt-3 pb-3", className)}>{children}</div>;
 }
 
 /** The scrolling region.
