@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Agent worktrees carry their own node_modules and .next output. Without
+    // this, `pnpm lint` walks them and reports thousands of errors from
+    // generated and third-party files, which made the command unusable.
+    ".claude/**",
+    "node_modules/**",
   ]),
 ]);
 
