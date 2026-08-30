@@ -43,13 +43,27 @@ export async function switchOrganizationAction(organizationId: string) {
  * Begins acting as another user for support. Guarded inside
  * startImpersonation() — the allowlist check is not the caller's to make.
  */
-export async function startImpersonationAction(formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim();
-  if (!email) throw new Error("Enter an email address.");
+export type ImpersonationActionState = { error?: string } | undefined;
 
-  await startImpersonation(email);
+export async function startImpersonationAction(
+  _prev: ImpersonationActionState,
+  formData: FormData,
+): Promise<ImpersonationActionState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Enter an email address." };
+
+  try {
+    await startImpersonation(email);
+  } catch (error) {
+    // Shown inline, the way the login form shows a bad password. Throwing
+    // here would surface Next's full-page runtime error instead, which is
+    // both alarming and gives the admin no way back to the form.
+    return { error: error instanceof Error ? error.message : "Could not impersonate." };
+  }
 
   revalidatePath("/", "layout");
+  // Deliberately outside the try: redirect() signals by throwing, and
+  // catching that would turn a successful impersonation into an error.
   redirect("/");
 }
 
