@@ -1,0 +1,192 @@
+/* ── Dark is the default theme. Light is opt-in via [data-theme="light"]. ──
+   Every surface/ink/line token exists in both themes with the same name, so
+   components never branch on theme.
+
+   The system is monochrome. Both themes are warm neutrals — paper in light,
+   charcoal in dark — and NOTHING in it carries a hue: not the accent, not the
+   six status states, not danger. Meaning is carried by density instead —
+   fill level, ink weight, line, and pattern. See §DENSITY in readme.md.
+
+   --accent is a FILL ONLY. Any accent-coloured TEXT — figures, totals, links,
+   the wordmark — takes --accent-text. In light the two happen to be equal; in
+   dark they are not, and using --accent as a foreground there fails contrast. */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* surfaces — warm charcoal. Softened from the original violet near-black:
+     less contrast between steps, warmer undertone, so brass sits on it as ink
+     on paper rather than as a light on a wall. */
+  --surface-page:    oklch(0.178 0.004 75);
+  --surface-card:    oklch(0.212 0.004 75);
+  --surface-raised:  oklch(0.248 0.005 75);
+  --surface-hover:   oklch(0.288 0.005 75);
+  --surface-sunken:  oklch(0.152 0.004 75);
+  --surface-invert:  oklch(0.965 0.004 90);
+
+  /* ink — four steps. --text-faint is the floor, and it carries the 10px mono
+     micro-labels, so it clears 4.5:1 on page, card AND sunken in both themes;
+     it is a quiet ink, not a light one. */
+  --text-strong:     oklch(0.965 0.004 90);
+  --text-body:       oklch(0.790 0.005 90);
+  --text-muted:      oklch(0.690 0.006 90);
+  --text-faint:      oklch(0.605 0.006 90);
+  --text-invert:     oklch(0.190 0.004 75);
+
+  /* lines */
+  --line-hairline:   oklch(0.272 0.005 75);
+  --line-strong:     oklch(0.360 0.006 75);
+  --line-focus:      oklch(0.965 0.004 90);
+
+  /* accent — ink. No hue at all: the accent is the highest-contrast value the
+     theme owns. On charcoal that inverts the button — a near-white fill with
+     dark type — so the primary action is the brightest object on the page
+     without spending any colour on it. --accent-ink is therefore DARK here (the
+     opposite of a hued accent), and --accent-text equals --accent. Accent links
+     must carry an underline: with no hue, weight alone will not separate them
+     from body ink. */
+  --accent:          oklch(0.965 0.004 90);
+  --accent-press:    oklch(0.880 0.004 90);
+  --accent-ink:      oklch(0.190 0.004 75);
+  --accent-wash:     oklch(0.288 0.005 75);
+  --accent-quiet:    oklch(0.690 0.006 90);
+  --accent-text:     oklch(0.965 0.004 90);
+
+  /* order-item lifecycle — six states in ONE ink, separated by density. The
+     ramp is the lifecycle: a chip gets materially heavier as the order advances,
+     so progress is visible in a row of chips at a glance and needs no legend.
+       pending    quiet outline, no fill
+       purchased  faint fill
+       received   fill + strong line
+       packed     heavy fill
+       completed  inverted solid — the terminal state, and the heaviest
+       cancelled  OFF the ramp — it reuses the Purchased fill and is marked by
+                  --pattern-hatch on an edge band plus a strong line. Cancelled
+                  is not "further along", so it must not read as heavier; the
+                  hatch is its signal (never under the label; see §DENSITY).
+     Each step is at least 1.5:1 from its neighbour and from the card it sits on,
+     which is what makes a row of chips readable as progress at 10px. Every -ink
+     clears 4.5:1 on its own -bg. Do not add a hue to this block: a seventh state
+     is a new density, not a new colour. */
+  --status-pending-ink:     oklch(0.690 0.006 90);
+  --status-pending-bg:      transparent;
+  --status-pending-line:    oklch(0.360 0.006 75);
+  --status-purchased-ink:   oklch(0.965 0.004 90);
+  --status-purchased-bg:    oklch(0.345 0.005 75);
+  --status-purchased-line:  transparent;
+  --status-received-ink:    oklch(0.965 0.004 90);
+  --status-received-bg:     oklch(0.450 0.006 75);
+  --status-received-line:   transparent;
+  --status-packed-ink:      oklch(0.190 0.004 75);
+  --status-packed-bg:       oklch(0.640 0.006 80);
+  --status-packed-line:     transparent;
+  --status-completed-ink:   oklch(0.190 0.004 75);
+  --status-completed-bg:    oklch(0.965 0.004 90);
+  --status-completed-line:  transparent;
+  --status-cancelled-ink:   oklch(0.965 0.004 90);
+  --status-cancelled-bg:    oklch(0.345 0.005 75);
+  --status-cancelled-line:  oklch(0.640 0.006 80);
+
+  /* feedback — also hueless. Destructive intent is carried by --pattern-hatch
+     plus the strongest ink, never by red, so it survives greyscale printing and
+     colourblind users identically. A destructive control MUST pair the hatch
+     with an explicit verb ("Cancel item"), because density alone cannot say
+     which direction the action goes. */
+  --danger:          oklch(0.965 0.004 90);
+  --danger-wash:     oklch(0.212 0.004 75);
+  --warning:         oklch(0.790 0.005 90);
+  --success:         oklch(0.965 0.004 90);
+
+  /* A soft halo in the accent, for the primary button's hover/press ring. Alpha
+     is deliberate: it reads as pressure, not as a second border. */
+  --ring-soft:       oklch(0.965 0.004 90 / 0.14);
+
+  /* grain — the same halftone device as paper, one pitch wider and far quieter.
+     The earlier 1px/4px weave banded into visible stripes across large empty
+     surfaces, which read as a rendering artefact rather than as material; a
+     sparse dot on a 6px pitch holds the tint without striping. Opacity stays
+     low because currentColor is near-white here. */
+  --pattern-grain:         radial-gradient(currentColor 0.5px, transparent 0.75px);
+  --pattern-grain-size:    6px 6px;
+  --pattern-grain-opacity: 0.09;
+
+  --overlay-scrim:   oklch(0.130 0.004 75 / 0.68);
+  --shadow-color:    40 8% 4%;
+  --shadow-alpha:    0.44;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* surfaces — warm paper. A greenish-warm off-white page with pure-white cards
+     floating on it; the card is defined by its shadow, not by a border. */
+  --surface-page:    oklch(0.958 0.004 100);
+  --surface-card:    oklch(1.000 0.000 0);
+  --surface-raised:  oklch(0.976 0.003 100);
+  --surface-hover:   oklch(0.938 0.005 100);
+  --surface-sunken:  oklch(0.946 0.004 100);
+  --surface-invert:  oklch(0.205 0.005 80);
+
+  /* Floor set against --surface-sunken, the lightest-relative surface .lbl lands
+     on — not against --surface-card. */
+  --text-strong:     oklch(0.215 0.006 80);
+  --text-body:       oklch(0.475 0.006 90);
+  --text-muted:      oklch(0.500 0.006 90);
+  --text-faint:      oklch(0.545 0.006 90);
+  --text-invert:     oklch(0.982 0.003 100);
+
+  --line-hairline:   oklch(0.918 0.004 100);
+  --line-strong:     oklch(0.870 0.005 100);
+  --line-focus:      oklch(0.215 0.006 80);
+
+  /* accent — ink. Mirrored from dark: the darkest value the theme owns, deep
+     enough to read as ink rather than as a highlight, which suits the paper
+     surfaces. The fill is dark here, so --accent-ink is light again and one
+     value serves both the fill and the text role. */
+  --accent:          oklch(0.215 0.006 80);
+  --accent-press:    oklch(0.150 0.006 80);
+  --accent-ink:      oklch(0.982 0.003 100);
+  --accent-wash:     oklch(0.918 0.004 100);
+  --accent-quiet:    oklch(0.500 0.006 90);
+  --accent-text:     oklch(0.215 0.006 80);
+
+  /* The same ramp, mirrored: dark climbs toward white, light descends toward
+     black, and both end in an inverted solid for Completed. Cancelled again
+     reuses the Purchased fill and is marked by the hatch. */
+  --status-pending-ink:     oklch(0.500 0.006 90);
+  --status-pending-bg:      transparent;
+  --status-pending-line:    oklch(0.870 0.005 100);
+  --status-purchased-ink:   oklch(0.215 0.006 80);
+  --status-purchased-bg:    oklch(0.820 0.005 100);
+  --status-purchased-line:  transparent;
+  --status-received-ink:    oklch(0.982 0.003 100);
+  --status-received-bg:     oklch(0.680 0.006 90);
+  --status-received-line:   transparent;
+  --status-packed-ink:      oklch(0.982 0.003 100);
+  --status-packed-bg:       oklch(0.480 0.006 85);
+  --status-packed-line:     transparent;
+  --status-completed-ink:   oklch(0.982 0.003 100);
+  --status-completed-bg:    oklch(0.215 0.006 80);
+  --status-completed-line:  transparent;
+  --status-cancelled-ink:   oklch(0.215 0.006 80);
+  --status-cancelled-bg:    oklch(0.820 0.005 100);
+  --status-cancelled-line:  oklch(0.480 0.006 85);
+
+  --danger:          oklch(0.215 0.006 80);
+  --danger-wash:     oklch(0.925 0.004 100);
+  --warning:         oklch(0.400 0.006 90);
+  --success:         oklch(0.215 0.006 80);
+
+  --ring-soft:       oklch(0.215 0.006 80 / 0.12);
+
+  /* grain — paper is printed: a halftone dot on a 5px pitch, the same device a
+     press would use to hold a flat tint. */
+  --pattern-grain:         radial-gradient(currentColor 0.5px, transparent 0.6px);
+  --pattern-grain-size:    5px 5px;
+  --pattern-grain-opacity: 0.5;
+
+  --overlay-scrim:   oklch(0.300 0.008 80 / 0.30);
+  --shadow-color:    80 10% 30%;
+  --shadow-alpha:    0.10;
+}

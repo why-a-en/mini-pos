@@ -1,50 +1,65 @@
-import Link from "next/link";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
 import { withCurrentOrganization } from "@/lib/tenancy";
-import { products } from "@/db/schema";
+import { products, productImages, productModifierOptions, modifierOptions, modifiers } from "@/db/schema";
+import { ProductsView, type ProductRowData } from "./products-view";
 
 export default async function ProductsPage() {
-  const catalog = await withCurrentOrganization(({ organizationId, tx }) =>
-    tx
+  const user = await requireUser();
+
+  const catalog = await withCurrentOrganization(async ({ organizationId, tx }) => {
+    const rows = await tx
       .select({
         id: products.id,
         name: products.name,
+        price: products.price,
         status: products.status,
+        sourceUrl: products.sourceUrl,
       })
       .from(products)
       .where(eq(products.organizationId, organizationId))
-      .orderBy(asc(products.name)),
-  );
+      .orderBy(asc(products.name));
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Products</h1>
-        <Link
-          href="/products/new"
-          className="min-h-11 rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white"
-        >
-          + New product
-        </Link>
-      </div>
+    const productIds = rows.map((r) => r.id);
+    const [images, modifierRows] = await Promise.all([
+      productIds.length === 0
+        ? []
+        : tx
+            .select({ productId: productImages.productId, url: productImages.url })
+            .from(productImages)
+            .where(inArray(productImages.productId, productIds))
+            .orderBy(asc(productImages.sortOrder)),
+      productIds.length === 0
+        ? []
+        : tx
+            .select({ productId: productModifierOptions.productId, modifierName: modifiers.name })
+            .from(productModifierOptions)
+            .innerJoin(modifierOptions, eq(modifierOptions.id, productModifierOptions.modifierOptionId))
+            .innerJoin(modifiers, eq(modifiers.id, modifierOptions.modifierId))
+            .where(inArray(productModifierOptions.productId, productIds)),
+    ]);
 
-      {catalog.length === 0 ? (
-        <p className="text-sm text-neutral-500">No products yet.</p>
-      ) : (
-        <ul className="space-y-2">
-          {catalog.map((product) => (
-            <li key={product.id}>
-              <Link
-                href={`/products/${product.id}`}
-                className="block rounded-lg border border-neutral-200 p-4"
-              >
-                <p className="font-medium">{product.name}</p>
-                <p className="text-sm text-neutral-500">{product.status}</p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+    const imageByProduct = new Map<string, string>();
+    for (const img of images) if (!imageByProduct.has(img.productId)) imageByProduct.set(img.productId, img.url);
+    const modifiersByProduct = new Map<string, Set<string>>();
+    for (const m of modifierRows) {
+      const set = modifiersByProduct.get(m.productId) ?? new Set<string>();
+      set.add(m.modifierName);
+      modifiersByProduct.set(m.productId, set);
+    }
+
+    return rows.map(
+      (r): ProductRowData => ({
+        id: r.id,
+        name: r.name,
+        price: r.price,
+        sourceUrl: r.sourceUrl,
+        archived: r.status === "archived",
+        image: imageByProduct.get(r.id),
+        modifiers: Array.from(modifiersByProduct.get(r.id) ?? []),
+      }),
+    );
+  });
+
+  return <ProductsView products={catalog} canCreate={user.role !== "supplier"} />;
 }

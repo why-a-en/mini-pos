@@ -1,11 +1,14 @@
 # Data Model
 
-**Status:** Draft v2
-**Last updated:** 2026-08-23
-**Related:** [PRD.md](./PRD.md), [TECH_STACK.md](./TECH_STACK.md), [CONTEXT.md](./CONTEXT.md), [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md)
+**Status:** Draft v3
+**Last updated:** 2026-08-30
+**Related:** [PRD.md](./PRD.md), [TECH_STACK.md](./TECH_STACK.md), [CONTEXT.md](../CONTEXT.md), [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md), [ADR-0002](./adr/0002-multi-tenancy-mvp.md)
 
 Multi-tenant from day one: every tenant-scoped table carries an
-`organization_id`. See
+`organization_id`. Identity is separate from membership — a person is one
+`users` row and one `members` row per Organization they work for, and the
+*active* one lives on the session ([ADR-0002](./adr/0002-multi-tenancy-mvp.md)).
+See
 [TECH_STACK.md §4](./TECH_STACK.md#4-multi-tenancy--the-decision-that-matters-more-than-tool-choice)
 for why, and §5 below for how it's actually enforced (it's not just the
 column).
@@ -14,7 +17,11 @@ column).
 
 ```mermaid
 erDiagram
-    ORGANIZATIONS ||--o{ USERS : employs
+    ORGANIZATIONS ||--o{ MEMBERS : "is staffed by"
+    USERS ||--o{ MEMBERS : "belongs via"
+    USERS ||--o{ ACCOUNTS : "signs in with"
+    ORGANIZATIONS ||--o{ INVITATIONS : issues
+    ORGANIZATIONS ||--o{ SESSIONS : "is active in"
     ORGANIZATIONS ||--o{ CUSTOMERS : has
     ORGANIZATIONS ||--o{ PRODUCTS : owns
     ORGANIZATIONS ||--o{ MODIFIERS : owns
@@ -40,17 +47,33 @@ erDiagram
     }
     USERS {
         uuid id PK
-        uuid organization_id FK
         text name
         text email UK
-        text password_hash
-        text role
+        boolean email_verified
+        text role "platform admin, not tenant role"
         timestamptz created_at
+    }
+    MEMBERS {
+        uuid id PK
+        uuid organization_id FK
+        uuid user_id FK
+        text role "support_agent or supplier"
+        timestamptz created_at
+    }
+    ACCOUNTS {
+        uuid id PK
+        uuid user_id FK
+        text issuer
+        text account_id
+        text provider_id
+        text password "argon2id"
     }
     SESSIONS {
         uuid id PK
         uuid user_id FK
-        text token_hash UK
+        text token UK
+        uuid active_organization_id FK
+        uuid impersonated_by FK
         timestamptz expires_at
         timestamptz created_at
     }
@@ -136,13 +159,18 @@ erDiagram
 | Enum | Values | Used by |
 |---|---|---|
 | `organization_status` | `active`, `suspended` | `organizations.status` |
-| `user_role` | `customer_service`, `supplier` | `users.role` |
 | `product_status` | `active`, `archived` | `products.status` |
 | `order_item_status` | `pending`, `purchased`, `received`, `packed`, `completed`, `cancelled` | `order_items.status` |
 
-No `admin` role — PRD §4 deliberately has no in-app account management
-for MVP; new users are created by running a script directly against the
-database.
+**Roles are not a pg enum.** `members.role` is `text`, because better-auth
+writes comma-separated values for a member holding several roles, which an
+enum cannot store. The `user_role` enum that used to guard this was retired
+once the column moved; `AppRole` in `src/lib/auth` is the real union and the
+thing that gives compile-time safety.
+
+New users are still created by running a script (`pnpm org:create`,
+`pnpm member:add`) rather than through an in-app screen — see
+[ADR-0002](./adr/0002-multi-tenancy-mvp.md) decision 10.
 
 ## 3. Tables
 
@@ -153,37 +181,105 @@ The tenant. One row per business using the platform.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `name` | `text` | |
-| `status` | `organization_status` | default `active` |
+| `slug` | `text` UNIQUE | required by better-auth's organization plugin. Nothing routes by it — ADR-0002 keeps the Organization out of the URL — but it is populated so subdomains stay possible without a backfill |
+| `logo` | `text` | unused; part of the plugin's shape |
+| `metadata` | `text` | unused; part of the plugin's shape |
+| `status` | `organization_status` | default `active`. Checked on every request; a suspended Organization resolves to no session |
 | `created_at` | `timestamptz` | default `now()` |
 
+### Auth tables
+
+Owned by [better-auth](https://better-auth.com) and its organization and
+admin plugins ([ADR-0002](./adr/0002-multi-tenancy-mvp.md)). The shapes are
+dictated by `@better-auth/core`, but expressed in this schema's conventions:
+`uuid` primary keys rather than better-auth's default text ids
+(`advanced.database.generateId: "uuid"` makes it match), and `timestamptz`
+throughout.
+
+**None of these carry RLS**, and that is not an oversight — see §5.
+
 ### `users`
-Staff accounts. Auth is self-rolled (see
-[TECH_STACK.md §2](./TECH_STACK.md#self-rolled-auth-not-clerk--supabase-auth--deliberately-temporary)).
+The person, not the membership. A Supplier sourcing for two resellers is one
+row here with two `members` rows.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
-| `organization_id` | `uuid` FK → `organizations.id` | |
 | `name` | `text` | |
-| `email` | `text` UNIQUE | login identifier |
-| `password_hash` | `text` | argon2 hash |
-| `role` | `user_role` | `customer_service` or `supplier` |
+| `email` | `text` UNIQUE | globally unique, which is correct: it identifies a person, not a person-within-an-Organization |
+| `email_verified` | `boolean` | default `false`; unused until a verification flow ships |
+| `image` | `text` | unused |
+| `role` | `text` | **platform** administration (the operator), not the tenant role. Left null in practice — admins are allowlisted by id via `PLATFORM_ADMIN_USER_IDS` |
+| `banned` / `ban_reason` / `ban_expires` | | from the admin plugin; unused so far |
+| `created_at`, `updated_at` | `timestamptz` | default `now()` |
+
+No password column: credentials live on `accounts`.
+
+### `members`
+Which Organization a person belongs to, and what they do there.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK → `organizations.id` | `ON DELETE CASCADE` |
+| `user_id` | `uuid` FK → `users.id` | `ON DELETE CASCADE` |
+| `role` | `text` NOT NULL | `support_agent` or `supplier` — see §2 on why this is not an enum |
 | `created_at` | `timestamptz` | default `now()` |
 
-**Index:** `(organization_id)`
+**Indexes:** `(organization_id, user_id)` UNIQUE, `(organization_id)`, `(user_id)`
+
+### `accounts`
+Credentials and linked provider accounts.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `issuer` | `text` NOT NULL | `local:credential` for password logins. **Required**, and omitted by older better-auth CLI output — leaving it out breaks sign-in |
+| `account_id` | `text` NOT NULL | the user's id, for credential accounts |
+| `provider_id` | `text` NOT NULL | `credential` for password logins |
+| `user_id` | `uuid` FK → `users.id` | `ON DELETE CASCADE` |
+| `password` | `text` | argon2id hash — the same format the old `users.password_hash` held, moved verbatim so no user had to reset |
+| `access_token`, `refresh_token`, `id_token`, `scope`, expiry columns | | OAuth; unused |
+
+**Indexes:** `(issuer, account_id)` UNIQUE, `(user_id)`
 
 ### `sessions`
-Backs the session cookie. See TECH_STACK.md §2 for the design.
+Backs the session cookie.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `uuid` PK | |
 | `user_id` | `uuid` FK → `users.id` | `ON DELETE CASCADE` |
-| `token_hash` | `text` UNIQUE | |
+| `token` | `text` UNIQUE | stored as issued. A downgrade from the hash-only column this replaced — accepted knowingly, see [better-auth-spike.md §2](./research/better-auth-spike.md) |
+| `active_organization_id` | `uuid` FK → `organizations.id` | **the tenancy seam.** `src/lib/tenancy.ts` reads this; switching Organization re-stamps it |
+| `impersonated_by` | `uuid` FK → `users.id` | set while a platform admin acts as this user |
+| `ip_address`, `user_agent` | `text` | |
 | `expires_at` | `timestamptz` NOT NULL | |
-| `created_at` | `timestamptz` | default `now()` |
+| `created_at`, `updated_at` | `timestamptz` | default `now()` |
 
-**Indexes:** `(token_hash)`, `(user_id)`
+**Indexes:** `(token)` UNIQUE, `(user_id)`
+
+### `invitations`, `verifications`
+Required by the plugins' schema; both stay empty. Invitations and password
+reset are deferred (ADR-0002) — staff accounts are created directly, so no
+email provider is involved.
+
+### `impersonation_events`
+Append-only audit of support impersonation. Not part of better-auth:
+`sessions.impersonated_by` is deleted along with the session, which is the
+wrong property for a record of one company's staff reading another
+company's customer data. Nothing in the app deletes from this table.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `admin_user_id` | `uuid` FK → `users.id` | who acted |
+| `target_user_id` | `uuid` FK → `users.id` | who they acted as |
+| `organization_id` | `uuid` FK → `organizations.id` | nullable |
+| `started_at` | `timestamptz` | default `now()` |
+| `ended_at` | `timestamptz` | stamped before the session swaps back |
+
+**Index:** `(admin_user_id, started_at)`
 
 ### `customers`
 A real, searchable entity (PRD §5.3) — not free text on the order.
@@ -276,8 +372,12 @@ through this table — no separate `product_modifiers` table needed.)
 **Index:** UNIQUE `(product_id, modifier_option_id)`
 
 ### `orders`
-A Customer's request (PRD §5.4) — a **header only**. No status; see
-`order_items`.
+A Customer's request (PRD §5.4) — a **header only**. No per-item status
+lives here; see `order_items`. `placed_at` is the one exception: it's not a
+lifecycle status, just the draft/placed line — the order wizard writes a row
+as soon as a customer's picked (with however many items were added before
+the wizard was closed), and `placed_at` distinguishes "still being composed"
+from "handed off" without needing a full status column.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -286,14 +386,15 @@ A Customer's request (PRD §5.4) — a **header only**. No status; see
 | `customer_id` | `uuid` FK → `customers.id` NOT NULL | |
 | `screenshot_url` | `text` | nullable — R2 object URL |
 | `notes` | `text` | nullable |
-| `created_by` | `uuid` FK → `users.id` | the Customer Service who logged it |
+| `created_by` | `uuid` FK → `users.id` | the Support Agent who logged it |
 | `created_at` | `timestamptz` | |
+| `placed_at` | `timestamptz` | nullable — null means still a draft |
 
 **Indexes:** `(organization_id, customer_id)`, `(organization_id, created_at)`
 
 ### `order_items`
 One line of an Order (PRD §5.5) — the unit the Supplier's Purchase Queue
-and Customer Service's Packing Queue actually operate on. **Status lives
+and Support Agent's Packing Queue actually operate on. **Status lives
 here, not on `orders`** — see
 [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md).
 
@@ -305,8 +406,8 @@ here, not on `orders`** — see
 | `product_id` | `uuid` FK → `products.id` NOT NULL | |
 | `quantity` | `int` NOT NULL | default `1` |
 | `status` | `order_item_status` NOT NULL | default `pending` |
-| `cancellation_reason` | `text` | nullable, set when status → `cancelled` |
-| `purchased_at` / `received_at` / `packed_at` / `completed_at` | `timestamptz` | nullable, set on each transition |
+| `cancellation_reason` | `text` | nullable, set when status → `cancelled`. A fixed sentinel string (`CANT_SOURCE_REASON` in `db/schema.ts`) marks the Purchase Queue's "Can't source" path specifically — that's how `/unsourced` finds only those, distinct from a Support-initiated cancel on the Order detail page |
+| `cancelled_at` / `purchased_at` / `received_at` / `packed_at` / `completed_at` | `timestamptz` | nullable, set on each transition — `cancelled_at` is what makes cancellation a soft delete rather than the row silently going stale with no record of when |
 | `created_at` | `timestamptz` | |
 
 **Indexes:**
@@ -345,13 +446,22 @@ stored directly on every table anyway because:
 
 ## 5. Row-Level Security — enforced two ways, and neither is optional
 
-Every tenant-scoped table (everything except `organizations`, `users`,
-`sessions` — those are needed pre-auth, before an `organization_id` is
-even known) has RLS enabled, and the app additionally filters every
-query by `organization_id` explicitly. Both layers matter; **this was
-verified by actually testing cross-org isolation with real fixtures**,
-not by reading the SQL and assuming it worked — that testing surfaced
-two gotchas that would otherwise have made this whole section a no-op:
+Every tenant-scoped table has RLS enabled, and the app additionally filters
+every query by `organization_id` explicitly.
+
+The exceptions are the auth tables — `organizations`, `users`, `members`,
+`accounts`, `sessions`, `invitations`, `verifications` and
+`impersonation_events`. Each is read in order to *establish* the tenant
+scope, so none can be gated on it. `members` is the one to watch: it is the
+table that answers "which Organization is this request in", so a query
+against it must be scoped by hand.
+
+Both layers matter, and this is **verified in CI** rather than by
+inspection — `tests/tenant-isolation.test.ts` asserts that a scope on one
+Organization cannot read another's rows through a query that omits its own
+filter, and that the test itself fails when the policy is dropped. The
+original manual verification surfaced two gotchas that would otherwise have
+made this whole section a no-op:
 
 ```sql
 alter table customers enable row level security;
@@ -373,7 +483,7 @@ create policy tenant_isolation on customers
    [TECH_STACK.md](./TECH_STACK.md#neon-role-setup-app_user-vs-the-owner-role).
 
 The app sets `app.organization_id` at the start of each request by
-resolving the session cookie → `sessions.user_id` → `users.organization_id`,
+resolving the session cookie → `sessions.active_organization_id`,
 inside the same transaction as the queries that follow it (necessary
 because Neon's pooled HTTP driver doesn't hold session state across
 separate calls — see `src/db/client.ts`).

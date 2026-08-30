@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { withCurrentOrganization } from "@/lib/tenancy";
+import { isUuid } from "@/lib/uuid";
 import {
   orders,
   orderItems,
@@ -10,12 +10,25 @@ import {
   products,
   customers,
 } from "@/db/schema";
+import { Screen, ScrollBody } from "@/components/ui/screen";
+import { TopBar } from "@/components/ui/top-bar";
+import { Badge, type OrderItemStatus } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cancelOrderItemAction } from "../actions";
 
 const CANCELLABLE_STATUSES = ["pending", "purchased", "received", "packed"] as const;
 
+function display(status: string): OrderItemStatus {
+  return (status.charAt(0).toUpperCase() + status.slice(1)) as OrderItemStatus;
+}
+
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: orderId } = await params;
+
+  // orders.id is a uuid column — a non-UUID segment (a typo, a stale link, a
+  // bot probing routes) would otherwise crash the query with a raw Postgres
+  // "invalid input syntax for type uuid" error instead of a normal 404.
+  if (!isUuid(orderId)) notFound();
 
   const data = await withCurrentOrganization(async ({ organizationId, tx }) => {
     const [order] = await tx
@@ -50,10 +63,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       itemIds.length === 0
         ? []
         : await tx
-            .select({
-              orderItemId: orderItemModifiers.orderItemId,
-              value: modifierOptions.value,
-            })
+            .select({ orderItemId: orderItemModifiers.orderItemId, value: modifierOptions.value })
             .from(orderItemModifiers)
             .innerJoin(modifierOptions, eq(modifierOptions.id, orderItemModifiers.modifierOptionId))
             .where(inArray(orderItemModifiers.orderItemId, itemIds));
@@ -75,51 +85,53 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const { order, items } = data;
 
   return (
-    <div className="mx-auto max-w-md space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold">{order.customerName}</h1>
-        <p className="text-sm text-neutral-500">{order.customerPhone}</p>
-        {order.customerAddress && <p className="text-sm text-neutral-500">{order.customerAddress}</p>}
-        {order.notes && <p className="text-sm text-neutral-600">{order.notes}</p>}
-      </div>
+    <Screen>
+      {/* No "add item" action: an Order is closed to new Items once placed
+          (see the note above cancelOrderItemAction in ../actions.ts). What
+          can still change here is cancelling an Item that can't be
+          fulfilled. */}
+      <TopBar title={order.customerName} eyebrow={order.customerPhone} backHref="/orders" />
+      <ScrollBody>
+        <div className="grid gap-4 px-5 py-4">
+          {order.customerAddress && <p className="font-ui text-small text-text-muted">{order.customerAddress}</p>}
+          {order.notes && <p className="font-ui text-small text-text-body">{order.notes}</p>}
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-neutral-700">Items</h2>
-          <Link href={`/orders/${order.id}/add-item`} className="text-sm text-blue-600 underline">
-            + Add item
-          </Link>
-        </div>
+          <section className="grid gap-2">
+            <span className="font-mono text-label tracking-label uppercase text-text-faint">Items</span>
 
-        {items.length === 0 ? (
-          <p className="text-sm text-neutral-500">No items yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {items.map((item) => (
-              <li key={item.id} className="rounded-lg border border-neutral-200 p-3">
-                <div className="flex items-start justify-between gap-3">
+            {/* Reachable only for an order whose items were all cancelled —
+                items can't be added back here, so the copy doesn't invite
+                it. */}
+            {items.length === 0 ? (
+              <EmptyState icon="package" title="Nothing on this order." body="Every item on it was cancelled." />
+            ) : (
+              items.map((item) => (
+                <div key={item.id} className="flex items-start justify-between gap-3 rounded-md border border-line-hairline p-3">
                   <div>
-                    <p className="font-medium">{item.productName}</p>
-                    <p className="text-sm text-neutral-500">
+                    <p className="font-ui text-body-strong text-text-strong">{item.productName}</p>
+                    <p className="mt-0.5 font-ui text-small text-text-muted">
                       {item.modifiers.length > 0 ? `${item.modifiers.join(", ")} · ` : ""}
-                      qty {item.quantity} · {item.status}
+                      qty {item.quantity}
                     </p>
                   </div>
-                  {(CANCELLABLE_STATUSES as readonly string[]).includes(item.status) && (
-                    <form action={cancelOrderItemAction}>
-                      <input type="hidden" name="orderItemId" value={item.id} />
-                      <input type="hidden" name="orderId" value={order.id} />
-                      <button type="submit" className="text-sm text-red-600 underline">
-                        Cancel
-                      </button>
-                    </form>
-                  )}
+                  <div className="flex flex-col items-end gap-1.5">
+                    <Badge status={display(item.status)} size="sm" />
+                    {(CANCELLABLE_STATUSES as readonly string[]).includes(item.status) && (
+                      <form action={cancelOrderItemAction}>
+                        <input type="hidden" name="orderItemId" value={item.id} />
+                        <input type="hidden" name="orderId" value={order.id} />
+                        <button type="submit" className="cursor-pointer border-none bg-transparent font-ui text-small text-danger underline underline-offset-2 outline-none transition-transform duration-instant ease-standard active:scale-95 focus-visible:shadow-[var(--focus-ring)]">
+                          Cancel
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+              ))
+            )}
+          </section>
+        </div>
+      </ScrollBody>
+    </Screen>
   );
 }

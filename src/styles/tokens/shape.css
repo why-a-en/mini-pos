@@ -1,0 +1,53 @@
+:root {
+  /* Geometry is identical in both themes — only colour changes. Corners are
+     generous but never blobby: a card is calm, not friendly. */
+  --radius-xs: 4px;
+  --radius-sm: 9px;
+  --radius-md: 15px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+
+  --border-hairline: 1px solid var(--line-hairline);
+  --border-strong: 1px solid var(--line-strong);
+
+  /* Soft and diffuse, two layers: a tight contact shadow plus a wide bloom.
+     This is what lets a card sit on the page with no border at all. */
+  --shadow-none: none;
+  --shadow-raised:
+    0 1px 2px hsl(var(--shadow-color) / calc(var(--shadow-alpha) * 0.5)),
+    0 8px 24px -6px hsl(var(--shadow-color) / calc(var(--shadow-alpha) * 0.8));
+  --shadow-sheet:
+    0 -2px 6px hsl(var(--shadow-color) / calc(var(--shadow-alpha) * 0.5)),
+    0 -18px 48px -8px hsl(var(--shadow-color) / var(--shadow-alpha));
+  --shadow-dialog:
+    0 2px 8px hsl(var(--shadow-color) / calc(var(--shadow-alpha) * 0.5)),
+    0 32px 72px -12px hsl(var(--shadow-color) / var(--shadow-alpha));
+
+  /* Cards are defined by a hairline, not by a shadow. Ink on paper: the edge is
+     drawn, the surface does not float. --shadow-raised still exists for things
+     that genuinely leave the page — sheets, dialogs, toasts. */
+  --border-card: 1px solid var(--line-hairline);
+
+  --focus-ring: 0 0 0 2px var(--surface-page), 0 0 0 4px var(--line-focus);
+
+  /* ── Pattern ──────────────────────────────────────────────────────────────
+     The system is monochrome, so pattern does work that colour usually does.
+     Both patterns are drawn in currentColor, which means they inherit the ink
+     of whatever they sit in and need no theme variants.
+
+     --pattern-hatch marks DESTRUCTIVE and CANCELLED. It must never run under a
+     label: hatch an edge band, an inset strip, or a border, and keep glyphs on
+     flat ink (white-on-white stripes dissolve the letterforms).
+
+     --pattern-grain gives a large empty surface material at low opacity. It is
+     texture, not signal — never encode meaning in it. The grain is the one
+     pattern that DIFFERS by theme, because the two themes are different
+     materials: paper takes a halftone dot, charcoal takes a fine weave (a dot
+     raster on a dark surface reads as dust or dead pixels). Both are drawn in
+     currentColor at a deliberately low opacity — see the theme blocks in
+     colors.css for the per-theme values. */
+  --pattern-hatch:       repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 5px);
+  --pattern-hatch-loose: repeating-linear-gradient(45deg, currentColor 0 1px, transparent 1px 8px);
+  --pattern-raster:      radial-gradient(currentColor 0.5px, transparent 0.6px);
+  --pattern-raster-size: 5px 5px;
+}

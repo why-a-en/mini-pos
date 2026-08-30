@@ -15,12 +15,12 @@ The business model today:
    modifiers (color, size, variant, etc.) and quantity in chat.
 3. A **Supplier** has to go find and purchase that exact item on Lazada or
    TikTok Shop — usually by searching with the image the customer sent.
-4. There's a shared chat group between the Supplier and **Customer
-   Service**. Customer Service posts each customer's order into that group
+4. There's a shared chat group between the Supplier and the
+   **Support Agents**. A Support Agent posts each customer's order into that group
    as a message: a screenshot + product info + modifiers + quantity.
 5. The Supplier scrolls the group, manually reads every message, and tracks
    in their head (or notes) what still needs to be bought.
-6. Once bought and shipped to Customer Service, the item still has to be
+6. Once bought and shipped to the Support Agent, the item still has to be
    **packed and sent to the real customer** — a step the current chat-based
    process doesn't track at all; it just happens informally once the parcel
    shows up.
@@ -30,17 +30,17 @@ The business model today:
 - **No structure.** Orders live as chat messages. Nothing is a record —
   it's a scrollback the Supplier has to re-read.
 - **No source-of-truth for products.** The same product may be described
-  slightly differently depending on who on Customer Service is handling it,
+  slightly differently depending on which Support Agent is handling it,
   or re-typed from scratch each time a customer asks about it.
 - **Wasted Supplier effort.** The Supplier re-does image search on Lazada/TikTok
-  even when Customer Service already found and clarified the exact listing
+  even when a Support Agent already found and clarified the exact listing
   during the chat with the customer — that link is thrown away once it's
   screenshotted into the group.
 - **No aggregation.** If three customers order the same product today,
   the Supplier discovers this by luck while scrolling, not by design — so
   they may buy it three separate times instead of once, or miss orders
   entirely.
-- **No status visibility.** Nothing tells anyone (Customer Service, Supplier, or the
+- **No status visibility.** Nothing tells anyone (Support Agent, Supplier, or the
   business owner) what's been bought, arrived, packed, or sent.
 - **Not searchable.** Finding "what did customer X order yesterday" means
   scrolling chat history.
@@ -50,7 +50,7 @@ The business model today:
 Replace the shared-chat-as-database workflow with a lightweight internal
 tool where:
 
-- **Customer Service** builds and maintains a **product catalog**, logs
+- **Support Agents** build and maintain a **product catalog**, logs
   each **customer's order** against it, and — once an item is bought and
   arrives — **packs and ships it** to the real customer.
 - The **Supplier** gets a clean, always-current, *grouped-by-product*
@@ -67,29 +67,40 @@ tool where:
 | Order structure | An **Order** can hold **multiple Products**, each its own **Order Item** (Product + modifier selection + quantity), each with its **own** status — not one status per Order. Every Order Item must reference a catalog Product; no ad-hoc/one-off items without a Product record. |
 | Modifiers | **Structured, not free text.** A Modifier (e.g. "Color") is a reusable, Organization-wide catalog with a global list of Options; each Product picks the subset of a Modifier's Options that apply to it. |
 | Customer | **A real, searchable entity** (name + phone + address) — not free text re-typed on every order. |
-| Roles & permissions | **Two real roles** (Customer Service, Supplier), each with its own default views — **not** a granular permission system. Both roles can technically perform any action; the split is about what you land on, not what you're blocked from. |
-| Account creation | **Out of band for MVP.** No in-app "add a teammate" screen — new logins are created via a script, run by whoever's setting the account up. |
+| Roles & permissions | **Three roles** (Admin, Support Agent, Supplier), each with its own default views — **not** a granular permission system. The split is mostly about what you land on rather than what you're blocked from; the exception is Admin, whose staff-management screens are genuinely gated. |
+| Account creation | **First account out of band, staff management in-app.** A new Organization's first login is created by script (`pnpm org:create`); after that an Admin adds and manages staff from within the app. No emailed invitations — the Admin sets a password and passes it on directly, keeping an email provider out of the stack. |
 | Customer-facing access | **None.** Customers stay in chat/social media; they are not platform users in the MVP (see idea in §9). |
 
 ## 4. Users & Roles
 
-Two roles, each landing on a different default view — the split is about
-UX, not access control:
+Three roles, each landing on a different default view. For Support Agent and
+Supplier the split is about UX rather than access control; Admin is the one
+role that unlocks something the others genuinely cannot reach.
 
 | Role | Who | Lands on | Can do |
 |---|---|---|---|
-| **Customer Service** | Staff handling customer chats, product upkeep, and packing | The Order log | Create/edit products (incl. Modifiers); create Orders/Customers; view & filter all Orders; work the **Packing Queue** (Received → Packed → Completed) |
+| **Admin** | The reseller's own administrator — usually the owner, who also works day to day | The Order log | Everything both other roles can do, plus manage their Organization's staff and edit its details. A **superset**, so one person doesn't need two accounts |
+| **Support Agent** | Staff handling customer chats, product upkeep, and packing | The Order log | Create/edit products (incl. Modifiers); create Orders/Customers; view & filter all Orders; work the **Packing Queue** (Received → Packed → Completed) |
 | **Supplier** | Staff who purchases from Lazada/TikTok Shop | The **Purchase Queue** | View/search products; batch-mark Order Items Purchased, grouped by Product across every Order and Customer; view Order history |
 
-Both roles can technically reach any screen/action — there's no backend
-permission matrix — but each role's navigation shows/hides what's
-relevant to their job (e.g. Supplier doesn't see a "Create Product"
-button in their nav).
+Support Agent and Supplier can technically reach any operational
+screen/action — there's no backend permission matrix — but each role's
+navigation shows/hides what's relevant to their job (e.g. Supplier doesn't
+see a "Create Product" button in their nav).
 
-No third "Admin" role for MVP. New staff accounts (Customer Service or
-Supplier) are created by running a script against the database directly,
-not through an in-app screen — deliberately, to avoid building
-account-management UI for a team of two or three people.
+Admin is different: its staff-management screens check the role on the
+server, not just in navigation. Hiding a shortcut is not access control.
+
+The **first** account for a new Organization is still created out of band,
+by running `pnpm org:create`. Admin exists so that everything *after* that
+— adding staff, changing roles, suspending someone who has left — no longer
+needs a script run by us. Emailed invitations remain deferred: an Admin
+creates the account and passes a generated one-time password on directly,
+which keeps an email provider out of the stack. The account's owner must
+replace that password before doing anything else, and a forgotten one is
+reset by an Admin rather than by self-service — see
+[ADR-0002](./adr/0002-multi-tenancy-mvp.md) and
+[ADR-0003](./adr/0003-password-recovery-and-forced-change.md).
 
 ## 5. Core Concepts / Data Model
 
@@ -121,7 +132,7 @@ A **Modifier** (e.g. "Color", "Size") is a reusable attribute type,
 shared across the whole catalog — not typed fresh per product. Each
 Modifier has a global list of **Options** (e.g. "Black", "White", "Red"
 under "Color"). Both can be created inline while creating or editing a
-Product, so Customer Service never has to leave the flow to set one up.
+Product, so a Support Agent never has to leave the flow to set one up.
 
 A Product doesn't automatically get every Option of a Modifier it uses —
 it picks the subset that actually applies to it (this T-shirt only comes
@@ -143,7 +154,7 @@ pattern as Modifiers on Products.
 
 ### 5.4 Order
 
-A single request from a Customer, logged by Customer Service. **Has no
+A single request from a Customer, logged by a Support Agent. **Has no
 status of its own** — see §5.5 and [ADR-0001](./adr/0001-order-item-lifecycle-and-packing.md)
 for why. Can hold one or more Products.
 
@@ -152,7 +163,7 @@ for why. Can hold one or more Products.
 | Customer | Required, references a Customer |
 | Screenshot | Optional image upload — the chat screenshot, useful during transition / for disputes |
 | Notes | Free text |
-| Created by (Customer Service) / Created at | Audit trail |
+| Created by (Support Agent) / Created at | Audit trail |
 
 ### 5.5 Order Item
 
@@ -178,11 +189,11 @@ once without disturbing unrelated Items.
 |---|---|
 | Name | |
 | Email / username | |
-| Role | Customer Service / Supplier (see §4) |
+| Role | Support Agent / Supplier (see §4) |
 
 ## 6. Features (MVP)
 
-### 6.1 Product Management (Customer Service)
+### 6.1 Product Management (Support Agent)
 - Create a product: name, description, images, source URL, price — and,
   right on the same form, an optional first Modifier (name + options).
   Uploaded images go straight to storage from the browser, not through
@@ -193,7 +204,7 @@ once without disturbing unrelated Items.
 - Edit / archive a product.
 - List/search products (by name, status).
 
-### 6.2 Order Management (Customer Service)
+### 6.2 Order Management (Support Agent)
 - Create an order: search-or-create the Customer, then add one or more
   Order Items (product, modifier selection, quantity each), plus an
   optional screenshot/note for the whole order.
@@ -218,7 +229,7 @@ scanning a list of individual orders.
 - Separate view to search/filter Order history (all statuses, past
   dates).
 
-### 6.4 Packing Queue (Customer Service)
+### 6.4 Packing Queue (Support Agent)
 A dedicated, filterable view of Order Items in Purchased / Received /
 Packed status — separate from the general Order log, because "what's
 arrived and needs packing" is a different question from "what did we log
@@ -231,15 +242,15 @@ today."
 ### 6.5 Auth
 - Simple login (email/password) so actions are attributed to a person.
 - Each role sees timestamps in its own local time: Supplier in Thailand
-  time, Customer Service in Myanmar time (presentation-only — no data
+  time, Support Agent in Myanmar time (presentation-only — no data
   actually changes).
 
 ## 7. User Flows
 
-### 7.1 Customer Service logs a new order
+### 7.1 A Support Agent logs a new order
 1. Customer in chat sends images and says "I want this in black, size M,
    qty 2, and also this other thing in red."
-2. Customer Service searches for the Customer (or creates them, if new).
+2. The Support Agent searches for the Customer (or creates them, if new).
 3. For each item the customer wants: search the catalog for the matching
    product (creating it first, with modifiers, if it doesn't exist yet),
    pick the modifier selection and quantity, add it as an Order Item.
@@ -260,16 +271,16 @@ today."
 5. Repeats for the next product group. Done for the day once the queue's
    clear.
 
-### 7.3 Customer Service packs and ships
-1. Customer Service opens the Packing Queue once a Purchased item
+### 7.3 A Support Agent packs and ships
+1. The Support Agent opens the Packing Queue once a Purchased item
    physically arrives, marks it Received.
 2. Packs it, marks it Packed.
 3. Sends it to the real customer, marks it Completed.
 
 ## 8. Non-Functional Requirements
 
-- **Mobile-first, not just mobile-friendly.** Hard requirement — Customer
-  Service and the Supplier use this primarily on phones. Every screen is
+- **Mobile-first, not just mobile-friendly.** Hard requirement — Support
+  Agents and the Supplier use this primarily on phones. Every screen is
   designed for the smallest target size first (~320–375px), then
   progressively enhanced upward.
 - **Performant and robust on real-world phone browsers.** Reliable on
@@ -286,7 +297,7 @@ today."
 ## 9. Future Ideas / Post-MVP
 
 1. **Marketplace URL capture as a first-class habit.** The single
-   biggest efficiency win available: once Customer Service (or the
+   biggest efficiency win available: once a Support Agent (or the
    customer) finds the item on Lazada/TikTok, paste the URL into the
    product record so the Supplier's search-by-image step disappears
    almost entirely.
@@ -298,8 +309,8 @@ today."
    the first thing to revisit post-MVP.
 4. **Multi-Supplier support with claiming.** If a second Supplier joins,
    an explicit "claim" action prevents two people buying the same item.
-5. **Customer-facing lookup.** A simple, no-login page/link Customer
-   Service can send a customer to see their own order status — more
+5. **Customer-facing lookup.** A simple, no-login page/link a Support
+   Agent can send a customer to see their own order status — more
    feasible now that Customer is a real entity, but still deferred.
 6. **Ad-hoc Order Items without a pre-made Product.** For rare one-off
    items not worth cataloging.
@@ -320,9 +331,9 @@ today."
 
 - Supplier clears the day's purchasing by scanning one grouped screen,
   not scrolling a chat group or a flat order list.
-- Time from "Customer Service logs an item" to "it's visible in the
+- Time from "a Support Agent logs an item" to "it's visible in the
   Purchase Queue" is near-instant.
-- Customer Service can tell, at a glance, what's arrived and needs
+- A Support Agent can tell, at a glance, what's arrived and needs
   packing vs. what's still out for purchase.
 - Reduction in duplicate purchases or missed orders caused by chat
   scrollback being the only record.

@@ -1,87 +1,135 @@
-import { asc, eq, ilike, and } from "drizzle-orm";
+import { notFound, redirect } from "next/navigation";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { requireUser } from "@/lib/auth";
 import { withCurrentOrganization } from "@/lib/tenancy";
-import { customers } from "@/db/schema";
-import { Field, fieldInputClass } from "@/components/form-field";
-import { createOrderAction } from "../actions";
+import { isUuid } from "@/lib/uuid";
+import { orders, orderItems, orderItemModifiers, customers, products, modifiers, modifierOptions, productModifierOptions } from "@/db/schema";
+import { NewOrderWizard, type WizardProduct, type DraftResume } from "../new-order-wizard";
+import { fetchCustomerBrowse } from "../query";
 
-// Customer Service's entry point (PRD §7.1) — customer is search-or-create,
-// same pattern as modifiers on a product. Items get added on the next
-// screen (order detail), one at a time, as the chat reveals more requests.
-export default async function NewOrderPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q } = await searchParams;
+/** The Customer→Items wizard, as its own route (not a Sheet over the Orders
+ *  list — see new-order-wizard.tsx's doc comment for why). Fresh order:
+ *  `/orders/new`. Resuming a saved draft: `/orders/new?draft=<orderId>` —
+ *  orders-view.tsx links straight here instead of holding wizard state
+ *  itself. */
+export default async function NewOrderPage({ searchParams }: { searchParams: Promise<{ draft?: string }> }) {
+  const user = await requireUser();
+  if (user.role === "supplier") redirect("/orders");
 
-  const matches = await withCurrentOrganization(({ organizationId, tx }) =>
-    tx
-      .select({ id: customers.id, name: customers.name, phone: customers.phone })
-      .from(customers)
-      .where(
-        q
-          ? and(eq(customers.organizationId, organizationId), ilike(customers.name, `%${q}%`))
-          : eq(customers.organizationId, organizationId),
-      )
-      .orderBy(asc(customers.name))
-      .limit(20),
-  );
+  const { draft: draftId } = await searchParams;
+  if (draftId !== undefined && !isUuid(draftId)) notFound();
+
+  const data = await withCurrentOrganization(async ({ organizationId, tx }) => {
+    const productRows = await tx
+      .select({ id: products.id, name: products.name, price: products.price, sourceUrl: products.sourceUrl })
+      .from(products)
+      .where(and(eq(products.organizationId, organizationId), eq(products.status, "active")))
+      .orderBy(asc(products.name));
+
+    const activeProductIds = productRows.map((p) => p.id);
+    const modifierRows =
+      activeProductIds.length === 0
+        ? []
+        : await tx
+            .select({
+              productId: productModifierOptions.productId,
+              modifierId: modifiers.id,
+              modifierName: modifiers.name,
+              optionId: modifierOptions.id,
+              optionValue: modifierOptions.value,
+            })
+            .from(productModifierOptions)
+            .innerJoin(modifierOptions, eq(modifierOptions.id, productModifierOptions.modifierOptionId))
+            .innerJoin(modifiers, eq(modifiers.id, modifierOptions.modifierId))
+            .where(inArray(productModifierOptions.productId, activeProductIds))
+            .orderBy(asc(modifiers.name), asc(modifierOptions.sortOrder));
+
+    const groupsByProduct = new Map<string, Map<string, { id: string; name: string; options: { id: string; value: string }[] }>>();
+    for (const row of modifierRows) {
+      const groups = groupsByProduct.get(row.productId) ?? new Map();
+      if (!groups.has(row.modifierId)) groups.set(row.modifierId, { id: row.modifierId, name: row.modifierName, options: [] });
+      groups.get(row.modifierId)!.options.push({ id: row.optionId, value: row.optionValue });
+      groupsByProduct.set(row.productId, groups);
+    }
+
+    const wizardProducts: WizardProduct[] = productRows.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      sourceUrl: p.sourceUrl,
+      modifierGroups: Array.from(groupsByProduct.get(p.id)?.values() ?? []),
+    }));
+
+    if (!draftId) return { wizardProducts, resume: null as DraftResume | null };
+
+    // A draft is an Order with placed_at still null — resuming one that's
+    // already been placed, or that belongs to another org (RLS already
+    // scopes the query, so it just comes back empty), is a 404, not a
+    // silent reset to a fresh wizard.
+    const [order] = await tx
+      .select({
+        id: orders.id,
+        notes: orders.notes,
+        customerId: orders.customerId,
+        customerName: customers.name,
+        customerPhone: customers.phone,
+        customerAddress: customers.address,
+      })
+      .from(orders)
+      .innerJoin(customers, eq(customers.id, orders.customerId))
+      .where(and(eq(orders.id, draftId), eq(orders.organizationId, organizationId), isNull(orders.placedAt)));
+    if (!order) return { wizardProducts, resume: undefined };
+
+    const itemRows = await tx
+      .select({ id: orderItems.id, quantity: orderItems.quantity, productName: products.name, productPrice: products.price })
+      .from(orderItems)
+      .innerJoin(products, eq(products.id, orderItems.productId))
+      .where(eq(orderItems.orderId, order.id));
+
+    const itemIds = itemRows.map((r) => r.id);
+    const selectionRows =
+      itemIds.length === 0
+        ? []
+        : await tx
+            .select({ orderItemId: orderItemModifiers.orderItemId, value: modifierOptions.value })
+            .from(orderItemModifiers)
+            .innerJoin(modifierOptions, eq(modifierOptions.id, orderItemModifiers.modifierOptionId))
+            .where(inArray(orderItemModifiers.orderItemId, itemIds));
+    const selectionsByItem = new Map<string, string[]>();
+    for (const s of selectionRows) {
+      const list = selectionsByItem.get(s.orderItemId) ?? [];
+      list.push(s.value);
+      selectionsByItem.set(s.orderItemId, list);
+    }
+
+    const resume: DraftResume = {
+      orderId: order.id,
+      customer: { id: order.customerId, name: order.customerName, phone: order.customerPhone, address: order.customerAddress },
+      notes: order.notes ?? "",
+      existingItems: itemRows.map((r) => ({
+        productName: r.productName,
+        price: r.productPrice,
+        selection: selectionsByItem.get(r.id) ?? [],
+        quantity: r.quantity,
+      })),
+    };
+    return { wizardProducts, resume };
+  });
+
+  if (data.resume === undefined) notFound();
+
+  // Customers are fetched separately, and only a browse page of them: the
+  // picker searches in SQL now (searchCustomersAction), so there is no reason
+  // to ship a slab of the customer table to the client and no cap that can
+  // silently hide someone from search.
+  const { rows: browseCustomers, total: customerTotal } = await fetchCustomerBrowse();
 
   return (
-    <div className="mx-auto max-w-md space-y-6">
-      <h1 className="text-lg font-semibold">Log a customer order</h1>
-
-      <form method="get" className="flex gap-2">
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search customers…"
-          className={fieldInputClass}
-        />
-        <button type="submit" className="min-h-11 shrink-0 rounded-md border border-neutral-300 px-3 text-sm">
-          Search
-        </button>
-      </form>
-
-      <form action={createOrderAction} className="space-y-4">
-        <Field label="Customer">
-          <select name="existingCustomerId" defaultValue="" className={fieldInputClass}>
-            <option value="">Select a customer…</option>
-            {matches.map((customer) => (
-              <option key={customer.id} value={customer.id}>
-                {customer.name} ({customer.phone})
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <details className="rounded-lg border border-neutral-200 p-3">
-          <summary className="cursor-pointer text-sm font-medium">+ New customer instead</summary>
-          <div className="mt-3 space-y-3">
-            <Field label="Name">
-              <input name="newCustomerName" className={fieldInputClass} />
-            </Field>
-            <Field label="Phone number">
-              <input name="newCustomerPhone" type="tel" className={fieldInputClass} />
-            </Field>
-            <Field label="Address">
-              <input name="newCustomerAddress" className={fieldInputClass} />
-            </Field>
-          </div>
-        </details>
-
-        <Field label="Notes (optional)">
-          <textarea name="notes" rows={3} className={fieldInputClass} />
-        </Field>
-        {/* TODO: screenshot upload — same deferred-to-/prototype call as product images. */}
-
-        <button
-          type="submit"
-          className="min-h-11 w-full rounded-md bg-neutral-900 px-3 text-base font-medium text-white"
-        >
-          Start order — add items next
-        </button>
-      </form>
-    </div>
+    <NewOrderWizard
+      customers={browseCustomers}
+      customerTotal={customerTotal}
+      products={data.wizardProducts}
+      resume={data.resume}
+    />
   );
 }

@@ -100,6 +100,51 @@ export async function createProductAction(formData: FormData) {
   redirect(`/products/${productId}`);
 }
 
+/**
+ * The same insert as `createProductAction`, for the one caller that can't
+ * use it: the order wizard's inline "new product" sub-step.
+ *
+ * Two things make the form action above unusable mid-wizard. It ends in a
+ * `redirect` to the new product's page, which would throw away a cart the
+ * wizard is holding in client state and never wrote anywhere; and it takes
+ * FormData, whereas the wizard needs the created row back so it can drop
+ * the product straight into the list and let the agent add it to the order
+ * without a round-trip. Same relationship `createCustomerAction` has to the
+ * customer sheet — one action, both surfaces.
+ *
+ * Deliberately narrower than the full form: no images and no modifier.
+ * Someone capturing a product mid-order is recording the thing a customer
+ * just asked for, and both of those are catalog curation they can do later
+ * on the product's own page — neither is needed to put the item on an
+ * order, and an upload widget inside a wizard sub-step on a phone is a lot
+ * of screen for something nobody is waiting on.
+ */
+export async function createProductInlineAction(input: {
+  name: string;
+  description: string;
+  price?: string;
+  sourceUrl?: string;
+}) {
+  const name = input.name.trim();
+  const description = input.description.trim();
+  const price = input.price?.trim() || null;
+  const sourceUrl = input.sourceUrl?.trim() || null;
+
+  if (!name) throw new Error("Name is required.");
+  if (!description) throw new Error("Description is required.");
+
+  const product = await withCurrentOrganization(async ({ organizationId, userId, tx }) => {
+    const [row] = await tx
+      .insert(products)
+      .values({ organizationId, name, description, sourceUrl, price, createdBy: userId })
+      .returning({ id: products.id, name: products.name, price: products.price, sourceUrl: products.sourceUrl });
+    return row;
+  });
+
+  revalidatePath("/products");
+  return product;
+}
+
 export async function setProductStatusAction(productId: string, status: "active" | "archived") {
   await withCurrentOrganization(async ({ organizationId, tx }) => {
     await tx

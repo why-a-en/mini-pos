@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { Logo } from "@/components/ui/logo";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage() {
@@ -9,11 +10,11 @@ export default async function LoginPage() {
   if (user) redirect("/");
 
   return (
-    <main className="flex min-h-full flex-1 items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-1 text-center">
-          <h1 className="text-xl font-semibold">Mini POS</h1>
-          <p className="text-sm text-neutral-500">Sign in to continue</p>
+    <main className="ds-grain-surface flex min-h-full flex-1 items-center justify-center bg-surface-page p-4">
+      <div className="w-full max-w-[360px] space-y-6">
+        <div className="space-y-1">
+          <Logo size={32} wordmark />
+          <p className="font-ui text-small text-text-muted">Order and product coordination.</p>
         </div>
         <LoginForm />
       </div>
