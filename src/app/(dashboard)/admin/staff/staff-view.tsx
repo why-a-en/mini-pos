@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
@@ -48,6 +48,7 @@ export function StaffView({
 }) {
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<StaffMember | null>(null);
+  const closeAdd = useCallback(() => setAdding(false), []);
 
   return (
     <Screen>
@@ -90,7 +91,7 @@ export function StaffView({
         </div>
       </ScrollBody>
 
-      <AddStaffSheet open={adding} onOpenChange={setAdding} />
+      <AddStaffSheet open={adding} onOpenChange={setAdding} onAdded={closeAdd} />
       <ManageStaffSheet member={selected} onClose={() => setSelected(null)} />
     </Screen>
   );
@@ -99,52 +100,68 @@ export function StaffView({
 function AddStaffSheet({
   open,
   onOpenChange,
+  onAdded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAdded: () => void;
 }) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      {/* The form only exists while the sheet is open, so useActionState is
+          fresh on every open. Keeping it mounted would leave the previous
+          submit's result behind, and the success effect below would close
+          the sheet again the instant it reopened. */}
+      <SheetContent>{open && <AddStaffForm onAdded={onAdded} />}</SheetContent>
+    </Sheet>
+  );
+}
+
+function AddStaffForm({ onAdded }: { onAdded: () => void }) {
   const [role, setRole] = useState<AppRole>("support_agent");
   const [state, formAction, pending] = useActionState(addStaffAction, undefined);
 
-  // Closing on success is driven by the action's own result rather than a
-  // separate success flag, so the sheet can't close over a failed submit.
-  if (state && !state.error && open) onOpenChange(false);
+  // Closing is driven by the action's own result, so the sheet can't close
+  // over a failed submit. It has to happen in an effect rather than during
+  // render — calling the parent's setState while rendering this component is
+  // exactly what React warns about.
+  useEffect(() => {
+    if (state && !state.error) onAdded();
+  }, [state, onAdded]);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
-        <SheetHeader title="Add staff" />
-        <form action={formAction}>
-          <SheetBody className="grid gap-4">
-            <Field label="Name" required>
-              <Input name="name" autoComplete="off" />
-            </Field>
-            <Field label="Email" required>
-              <Input name="email" type="email" autoComplete="off" icon="at-sign" />
-            </Field>
-            <Field
-              label="Temporary password"
-              required
-              hint="Give this to them directly — no invitation email is sent."
-            >
-              <Input name="password" type="text" autoComplete="off" icon="lock" />
-            </Field>
-            <Field label="Role" required>
-              <SegmentedControl options={ROLE_OPTIONS} value={role} onChange={setRole} />
-              <input type="hidden" name="role" value={role} />
-            </Field>
-            {state?.error && (
-              <p className="font-ui text-small text-danger">{state.error}</p>
-            )}
-          </SheetBody>
-          <SheetFooter>
-            <Button full type="submit" disabled={pending}>
-              {pending ? "Adding…" : "Add to Organization"}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
+    <>
+      <SheetHeader title="Add staff" />
+      <form action={formAction}>
+        <SheetBody className="grid gap-4">
+          <Field label="Name" required>
+            <Input name="name" autoComplete="off" />
+          </Field>
+          <Field label="Email" required>
+            <Input name="email" type="email" autoComplete="off" icon="at-sign" />
+          </Field>
+          <Field
+            label="Temporary password"
+            required
+            hint="Give this to them directly — no invitation email is sent."
+          >
+            <Input name="password" type="text" autoComplete="off" icon="lock" />
+          </Field>
+          <Field label="Role" required>
+            <SegmentedControl options={ROLE_OPTIONS} value={role} onChange={setRole} />
+            <input type="hidden" name="role" value={role} />
+          </Field>
+          {state?.error && (
+            <p className="font-ui text-small text-danger">{state.error}</p>
+          )}
+        </SheetBody>
+        <SheetFooter>
+          <Button full type="submit" disabled={pending}>
+            {pending ? "Adding…" : "Add to Organization"}
+          </Button>
+        </SheetFooter>
+      </form>
+    </>
   );
 }
 
