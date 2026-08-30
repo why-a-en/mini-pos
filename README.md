@@ -1,39 +1,94 @@
 # Mini POS
 
-Product catalog and daily order coordination for Customer Service and
-Suppliers — see [`docs/PRD.md`](./docs/PRD.md) for the full context on
-what this replaces and why.
+Product catalog and daily order coordination for a Myanmar-based
+cross-border resale business: Support Agents log customer requests against
+a Product catalog, Suppliers buy those Products from Lazada/TikTok Shop,
+and Support Agents pack and ship them once they arrive.
+
+The app is multi-tenant — every row belongs to an **Organization**, and the
+boundary is enforced by Postgres row-level security rather than by
+application code. [`CONTEXT.md`](./CONTEXT.md) defines the vocabulary
+(Organization, Admin, Support Agent, Supplier, Order Item …); read it first
+if a term here is unfamiliar.
+
+It is a **phone app first** — designed at 375px, monochrome, and meant to
+feel installed rather than loaded. See the UI conventions in
+[`CLAUDE.md`](./CLAUDE.md).
 
 ## Docs
 
+- [`CONTEXT.md`](./CONTEXT.md) — the domain model and its vocabulary
 - [`docs/PRD.md`](./docs/PRD.md) — product requirements
 - [`docs/TECH_STACK.md`](./docs/TECH_STACK.md) — stack & infra decisions
 - [`docs/DATA_MODEL.md`](./docs/DATA_MODEL.md) — schema
+- [`docs/ARCHITECTURE_ROADMAP.md`](./docs/ARCHITECTURE_ROADMAP.md) — what's next
+- [`docs/adr/`](./docs/adr/) — decisions and their reasoning:
+  [0001](./docs/adr/0001-order-item-lifecycle-and-packing.md) order item
+  lifecycle · [0002](./docs/adr/0002-multi-tenancy-mvp.md) multi-tenancy ·
+  [0003](./docs/adr/0003-password-recovery-and-forced-change.md) passwords
 
 ## Getting started
 
 ```bash
-npm install
+pnpm install
 neon link                    # once, links this repo to the Neon project
 neon checkout main           # pulls DATABASE_URL / DATABASE_URL_UNPOOLED into .env.local
-npm run db:generate          # generate SQL from src/db/schema.ts
-npm run db:migrate           # apply it, via the owner role (DATABASE_URL_UNPOOLED)
-npm run dev
+pnpm db:generate             # generate SQL from src/db/schema.ts
+pnpm db:migrate              # apply it, via the owner role (DATABASE_URL_UNPOOLED)
+pnpm dev
 ```
 
-The pulled `DATABASE_URL` from `neon checkout` is the **owner** role —
-fine for `db:migrate`, but the app itself must run against the
-**`app_user`** role instead (see
-[`docs/TECH_STACK.md`](./docs/TECH_STACK.md#neon-role-setup-app_user-vs-the-owner-role)
-for why, and the exact `CREATE ROLE` to run once per database). Swap
-`DATABASE_URL` in `.env.local` to `app_user`'s connection string before
-running `npm run dev`. Also fill in the R2 and `AUTH_SECRET` values from
-`.env.example`.
+### The `app_user` role is not optional
+
+`neon checkout` writes the **owner** role into `DATABASE_URL`. That's the
+right role for `db:migrate`, but the app must run as **`app_user`** —
+row-level security does not apply to the owner, so running the app as owner
+silently disables every tenant boundary.
+
+Create `app_user` with plain SQL, **not** `neon roles create` or the
+console: those grant `BYPASSRLS`. The exact `CREATE ROLE` / `GRANT`
+statements are in
+[`docs/TECH_STACK.md`](./docs/TECH_STACK.md#neon-role-setup-app_user-vs-the-owner-role).
+Then swap `DATABASE_URL` in `.env.local` to `app_user`'s pooled connection
+string, and fill in the R2 and `BETTER_AUTH_*` values from
+[`.env.example`](./.env.example).
+
+### Create the first Organization
+
+There is no signup screen — onboarding is a script on purpose
+([ADR-0002](./docs/adr/0002-multi-tenancy-mvp.md) decision 10), so that
+running it by hand teaches us what a real flow should do.
+
+```bash
+pnpm org:create "Acme Resale" admin@acme.com "Aung Aung" <password> admin
+pnpm member:add supplier@example.com acme-resale supplier "Full Name" <password>
+```
+
+`member:add` also puts an *existing* person into a second Organization —
+that's what lets one shared Supplier source for several resellers with a
+single login.
 
 Open [http://localhost:3000](http://localhost:3000).
 
+## Tests
+
+```bash
+pnpm test
+```
+
+Tests run against the real Neon database, not a mock: the tenant boundary
+*is* Postgres RLS, so stubbing the database out would test nothing.
+`DATABASE_URL` must therefore point at `app_user` when you run them.
+
 ## Stack
 
-Next.js (App Router) on Vercel · Neon Postgres · Drizzle · self-rolled
-auth (session cookies, argon2) · Cloudflare R2. Full rationale in
-[`docs/TECH_STACK.md`](./docs/TECH_STACK.md).
+Next.js (App Router) on Vercel · Neon Postgres with RLS · Drizzle ·
+better-auth · Tailwind v4 + shadcn/ui · nuqs · Cloudflare R2 · Vitest.
+Full rationale in [`docs/TECH_STACK.md`](./docs/TECH_STACK.md).
+
+## Working on it
+
+Trunk-based: short-lived `feat/…`, `fix/…`, `chore/…` branches off `main`,
+merged by PR. `main` is always deployable and Vercel ships it on merge; Neon
+branches the database per PR, so migrations never run against production
+data. Details in [`CLAUDE.md`](./CLAUDE.md).
