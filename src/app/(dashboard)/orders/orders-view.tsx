@@ -81,17 +81,16 @@ export function OrdersView({ orders, canCreate, window: dateWindow }: { orders: 
       {/* Search and the date trigger share one row — the date control stays
           narrow (icon-only until a window is picked) so search keeps the
           space it needs to be typed into on a phone. */}
-      <div className="flex items-center gap-2 px-5 pt-3 pb-2">
+      <Toolbar className="pb-2">
         <SearchField
-          className="min-w-0 flex-1"
           value={q}
           onChange={(e) => setQ(e.target.value || null)}
           onClear={() => setQ(null)}
           placeholder="Search by customer"
+          trailing={<DateRangeFilter window={dateWindow} />}
         />
-        <DateRangeFilter window={dateWindow} />
-      </div>
-      <Toolbar className="pt-0">
+      </Toolbar>
+      <Toolbar>
         <SegmentedControl options={STATUS_SEGMENTS} value={status} onChange={(v) => setStatus(v === "all" ? null : v)} />
       </Toolbar>
       <ScrollBody>

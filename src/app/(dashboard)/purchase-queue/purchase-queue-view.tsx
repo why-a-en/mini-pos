@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Screen, ScrollBody } from "@/components/ui/screen";
+import { Screen, ScrollBody, Toolbar } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { SearchField } from "@/components/ui/search-field";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
@@ -82,11 +82,17 @@ export function PurchaseQueueView({ groups, window: dateWindow }: { groups: Purc
           <StatTile value={totalUnits} label="units to buy" />
           <StatTile value={groups.length} label="products" />
         </div>
-        {/* Same one-row pairing as the Orders log, for the same reason. */}
-        <div className="flex items-center gap-2 px-5 pb-3">
-          <SearchField className="min-w-0 flex-1" value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ("")} placeholder="Search products" />
-          <DateRangeFilter window={dateWindow} />
-        </div>
+        {/* Same one-row pairing as the Orders log — now the same call, not
+            the same layout retyped. */}
+        <Toolbar>
+          <SearchField
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onClear={() => setQ("")}
+            placeholder="Search products"
+            trailing={<DateRangeFilter window={dateWindow} />}
+          />
+        </Toolbar>
         {filtered.length ? (
           <div className="grid gap-3 px-5 pb-12">
             {filtered.map((g) => (

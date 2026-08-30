@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Screen, ScrollBody } from "@/components/ui/screen";
+import { Screen, ScrollBody, Toolbar } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
@@ -74,9 +74,9 @@ export function CustomersView({ customers }: { customers: CustomerRowData[] }) {
         eyebrow={`${rows.length} customer${rows.length === 1 ? "" : "s"}`}
         right={<IconButton icon="user-plus" label="Add customer" variant="solid" onClick={() => setOpen(true)} />}
       />
-      <div className="px-5 py-2">
+      <Toolbar>
         <SearchField value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ("")} placeholder="Name or phone" />
-      </div>
+      </Toolbar>
       <ScrollBody>
         {filtered.length === 0 ? (
           <EmptyState

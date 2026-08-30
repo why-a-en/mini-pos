@@ -1,31 +1,57 @@
 "use client";
 
-import type { ChangeEventHandler } from "react";
+import * as React from "react";
 
 import { Icon } from "@/components/icon";
 import { cn } from "@/lib/utils";
+import { IconButton } from "@/components/ui/icon-button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { fieldShellWrapper, fieldShellInner } from "@/components/ui/field-shell";
 
-/** Pill-shaped filter input — a leading search glyph and a trailing clear
- *  button, which is the registry InputGroup's exact shape. Identical border,
- *  focus and disabled behaviour to Input; only the radius differs (see
- *  field-shell.ts). */
+/** The filter input at the top of a list screen — a leading search glyph and
+ *  a trailing clear button, which is the registry InputGroup's exact shape.
+ *
+ *  It is the same control as Input, not a cousin: same shell, same radius,
+ *  same 44px height, same prop surface (`ComponentProps<"input">`, so
+ *  `disabled`, `autoFocus`, `name`, `onKeyDown` and a ref all work). It used
+ *  to differ in three ways that had no reason behind them beyond nobody
+ *  having reconciled them:
+ *
+ *  - it was `rounded-full` while every other field on every other screen was
+ *    `rounded-sm`, so tabbing from a form to a filter changed the shape of
+ *    the field under you;
+ *  - it accepted five hand-picked props, so anything a caller needed beyond
+ *    those (disabling it while a list loads, focusing it on mount) meant
+ *    editing this file;
+ *  - the clear button was a bare `<button>` carrying its own hover, focus
+ *    ring and press — CLAUDE.md says reach for the kit, and the kit's
+ *    IconButton already has all three. It was also a 16px tap target on a
+ *    phone-first app; as an `icon-sm` IconButton it is 36px.
+ *
+ *  `trailing` is for the date filter that sits beside search on the Orders
+ *  log and the purchase queue. Both screens previously hand-assembled that
+ *  row — `flex items-center gap-2` outside, `min-w-0 flex-1` on the field —
+ *  and the second one's comment ("Same one-row pairing as the Orders log,
+ *  for the same reason") is what a duplicated layout looks like when it is
+ *  noticed but not fixed. Passing the control in keeps the two identical by
+ *  construction. */
 function SearchField({
   value,
-  onChange,
-  placeholder = "Search",
   onClear,
+  placeholder = "Search",
+  trailing,
   className,
-}: {
+  ...props
+}: Omit<React.ComponentProps<"input">, "value" | "type"> & {
   value: string;
-  onChange: ChangeEventHandler<HTMLInputElement>;
-  placeholder?: string;
   onClear?: () => void;
-  className?: string;
+  trailing?: React.ReactNode;
 }) {
-  return (
-    <InputGroup data-slot="search-field" className={cn(fieldShellWrapper, "h-(--control-h-md) rounded-full shadow-none", className)}>
+  const field = (
+    <InputGroup
+      data-slot="search-field"
+      className={cn(fieldShellWrapper, "h-(--control-h-md) rounded-sm shadow-none", trailing && "min-w-0 flex-1", className)}
+    >
       <InputGroupAddon align="inline-start" className="pl-3 text-text-faint">
         <Icon name="search" size={16} />
       </InputGroupAddon>
@@ -37,7 +63,6 @@ function SearchField({
         value={value}
         placeholder={placeholder}
         aria-label={placeholder}
-        onChange={onChange}
         className={cn(
           fieldShellInner,
           "pl-0",
@@ -45,21 +70,24 @@ function SearchField({
           // field has its own, and two would sit on top of each other.
           "[&::-webkit-search-cancel-button]:appearance-none",
         )}
+        {...props}
       />
 
-      {value ? (
-        <InputGroupAddon align="inline-end" className="pr-3">
-          <button
-            type="button"
-            aria-label="Clear search"
-            onClick={onClear}
-            className="flex cursor-pointer rounded-full border-none bg-transparent p-0 text-text-faint outline-none transition-[color,scale] duration-fast ease-standard hover:text-text-body active:scale-90 focus-visible:shadow-[var(--focus-ring)]"
-          >
-            <Icon name="x" size={16} />
-          </button>
+      {value && onClear ? (
+        <InputGroupAddon align="inline-end">
+          <IconButton icon="x" label="Clear search" size="icon-sm" onClick={onClear} disabled={props.disabled} />
         </InputGroupAddon>
       ) : null}
     </InputGroup>
+  );
+
+  if (!trailing) return field;
+
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {field}
+      {trailing}
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Screen, ScrollBody } from "@/components/ui/screen";
+import { Screen, ScrollBody, Toolbar } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { IconButton } from "@/components/ui/icon-button";
 import { SearchField } from "@/components/ui/search-field";
@@ -41,9 +41,9 @@ export function ProductsView({ products, canCreate }: { products: ProductRowData
           canCreate ? <IconButton icon="plus" label="Add product" href="/products/new" variant="solid" /> : null
         }
       />
-      <div className="px-5 pb-2">
+      <Toolbar>
         <SearchField value={q} onChange={(e) => setQ(e.target.value)} onClear={() => setQ("")} placeholder="Search products" />
-      </div>
+      </Toolbar>
       <ScrollBody>
         {filtered.length === 0 ? (
           <EmptyState
