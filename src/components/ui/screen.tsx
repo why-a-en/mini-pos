@@ -111,7 +111,11 @@ export function ScrollBody({ children, className }: { children?: ReactNode; clas
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
+      {/* Above the scroll content's own stacking: a sticky SectionHeader
+          carries z-[5] and would otherwise slide over the bar as it pins to
+          the top edge. Still under the TopBar (z-20), which the bar never
+          reaches. */}
+      <ScrollBar className="z-10" />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-line-strong transition-opacity duration-fast ease-standard"
