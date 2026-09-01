@@ -55,14 +55,22 @@ string, and fill in the R2 and `BETTER_AUTH_*` values from
 
 ### Create the first Organization
 
-There is no signup screen — onboarding is a script on purpose
-([ADR-0002](./docs/adr/0002-multi-tenancy-mvp.md) decision 10), so that
-running it by hand teaches us what a real flow should do.
+There is no public signup screen — the Organization, its first Admin and a
+first Store are bootstrapped from the command line
+([ADR-0002](./docs/adr/0002-multi-tenancy-mvp.md) decision 10,
+[ADR-0004](./docs/adr/0004-stores-within-an-organization.md) decision 6):
 
 ```bash
-pnpm org:create "Acme Resale" admin@acme.com "Aung Aung" <password> admin
+pnpm org:create "Acme Resale" admin@acme.com "Aung Aung" <password> admin "Main"
 pnpm member:add supplier@example.com acme-resale supplier "Full Name" <password>
+pnpm member:add cs@example.com acme-resale support_agent --stores "Main,Yangon"
 ```
+
+The last argument to `org:create` is the first Store's name (defaults to
+`Main`). `member:add` grants every Store by default, or just the named
+ones with `--stores`. After that, an Admin adds staff and further Stores
+in-app — a brand-new Organization with no Store walks its Admin through
+`/onboarding` on first login.
 
 `member:add` also puts an *existing* person into a second Organization —
 that's what lets one shared Supplier source for several resellers with a

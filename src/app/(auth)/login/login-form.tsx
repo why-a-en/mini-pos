@@ -6,18 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { loginAction } from "./actions";
 
-// Seeded development accounts, one per role. Ordered Admin first, matching
-// how the roles nest: Admin's access is a superset of the other two.
-// New Organizations are provisioned with `pnpm org:create`; these shortcuts
-// are dev convenience only and the block below is stripped from production
-// builds.
-//
-// `supplier@test.local` is a member of two Organizations on purpose — it is
-// the account that exercises the switcher in Settings.
+// Seeded development accounts — the scenario matrix for Organizations and
+// Stores. Run `pnpm tsx scripts/seed-test-data.mts` to (re)create them; the
+// script's header documents each one. This block is stripped from
+// production builds.
 const TEST_ACCOUNTS = [
-  { label: "Admin", email: "admin@test.local", password: "password123" },
-  { label: "Support Agent", email: "cs@test.local", password: "password123" },
-  { label: "Supplier", email: "supplier@test.local", password: "password123" },
+  { email: "admin@test.local", password: "password123", note: "Admin · 2 stores → picks on login, switcher in Settings" },
+  { email: "cs@test.local", password: "password123", note: "Support · 1 store → straight in, no switcher" },
+  { email: "packer@test.local", password: "password123", note: "Support · Warehouse only → lands on the non-default store" },
+  { email: "supplier@test.local", password: "password123", note: "Supplier · 2 orgs, 2 stores → both switchers" },
+  { email: "cs2@test.local", password: "password123", note: "Support · Second Reseller" },
+  { email: "founder@test.local", password: "password123", note: "Admin · org has no store → /onboarding" },
+  { email: "orphan@test.local", password: "password123", note: "Support · no store granted → /select-store dead-end" },
 ] as const;
 
 export function LoginForm() {
@@ -49,13 +49,24 @@ export function LoginForm() {
       {process.env.NODE_ENV !== "production" && (
         <div className="rounded-md border border-line-hairline p-3">
           <p className="font-ui text-small-strong text-text-strong">Test accounts</p>
-          <ul className="mt-2 grid gap-2">
+          <p className="mt-0.5 font-ui text-small text-text-faint">
+            All <code className="font-mono text-code">password123</code>. Each covers a
+            different Organization / Store scenario.
+          </p>
+          <ul className="mt-3 grid gap-2.5">
             {TEST_ACCOUNTS.map((account) => (
-              <li key={account.email} className="flex items-center justify-between gap-2">
-                <span className="font-ui text-small text-text-body">
-                  {account.label} — <code className="font-mono text-code">{account.email}</code>
+              <li key={account.email} className="flex items-start justify-between gap-2">
+                <span className="min-w-0 font-ui text-small text-text-body">
+                  <code className="font-mono text-code">{account.email}</code>
+                  <span className="block text-small text-text-faint">{account.note}</span>
                 </span>
-                <Button type="button" variant="secondary" size="sm" onClick={() => fillTestAccount(account.email, account.password)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => fillTestAccount(account.email, account.password)}
+                >
                   Use
                 </Button>
               </li>

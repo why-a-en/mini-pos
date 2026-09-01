@@ -22,10 +22,16 @@ erDiagram
     USERS ||--o{ ACCOUNTS : "signs in with"
     ORGANIZATIONS ||--o{ INVITATIONS : issues
     ORGANIZATIONS ||--o{ SESSIONS : "is active in"
+    ORGANIZATIONS ||--o{ STORES : has
+    MEMBERS ||--o{ MEMBER_STORES : "is granted"
+    STORES ||--o{ MEMBER_STORES : "granted to"
     ORGANIZATIONS ||--o{ CUSTOMERS : has
+    STORES ||--o{ CUSTOMERS : "walked into"
     ORGANIZATIONS ||--o{ PRODUCTS : owns
     ORGANIZATIONS ||--o{ MODIFIERS : owns
     ORGANIZATIONS ||--o{ ORDERS : owns
+    STORES ||--o{ ORDERS : "taken at"
+    STORES ||--o{ ORDER_ITEMS : "taken at"
     USERS ||--o{ SESSIONS : has
     USERS ||--o{ PRODUCTS : creates
     USERS ||--o{ ORDERS : creates
@@ -60,6 +66,19 @@ erDiagram
         text role "support_agent or supplier"
         timestamptz created_at
     }
+    STORES {
+        uuid id PK
+        uuid organization_id FK
+        text name
+        text status
+        timestamptz created_at
+    }
+    MEMBER_STORES {
+        uuid id PK
+        uuid member_id FK
+        uuid store_id FK
+        timestamptz created_at
+    }
     ACCOUNTS {
         uuid id PK
         uuid user_id FK
@@ -73,6 +92,7 @@ erDiagram
         uuid user_id FK
         text token UK
         uuid active_organization_id FK
+        uuid active_store_id FK
         uuid impersonated_by FK
         timestamptz expires_at
         timestamptz created_at
@@ -80,6 +100,7 @@ erDiagram
     CUSTOMERS {
         uuid id PK
         uuid organization_id FK
+        uuid store_id FK
         text name
         text phone
         text address
@@ -126,6 +147,7 @@ erDiagram
     ORDERS {
         uuid id PK
         uuid organization_id FK
+        uuid store_id FK
         uuid customer_id FK
         text screenshot_url
         text notes
@@ -135,6 +157,7 @@ erDiagram
     ORDER_ITEMS {
         uuid id PK
         uuid organization_id FK
+        uuid store_id FK
         uuid order_id FK
         uuid product_id FK
         int quantity
@@ -159,6 +182,7 @@ erDiagram
 | Enum | Values | Used by |
 |---|---|---|
 | `organization_status` | `active`, `suspended` | `organizations.status` |
+| `store_status` | `active`, `suspended` | `stores.status` |
 | `product_status` | `active`, `archived` | `products.status` |
 | `order_item_status` | `pending`, `purchased`, `received`, `packed`, `completed`, `cancelled` | `order_items.status` |
 
@@ -170,7 +194,11 @@ thing that gives compile-time safety.
 
 New users are still created by running a script (`pnpm org:create`,
 `pnpm member:add`) rather than through an in-app screen — see
-[ADR-0002](./adr/0002-multi-tenancy-mvp.md) decision 10.
+[ADR-0002](./adr/0002-multi-tenancy-mvp.md) decision 10 — *except* that an
+Admin adds their own staff in-app (`/admin/staff`) and is walked through
+creating the Organization's first Store and first teammate at `/onboarding`
+on first login. `org:create` still bootstraps the Organization, its first
+Admin, and a "Main" Store.
 
 ## 3. Tables
 
@@ -186,6 +214,41 @@ The tenant. One row per business using the platform.
 | `metadata` | `text` | unused; part of the plugin's shape |
 | `status` | `organization_status` | default `active`. Checked on every request; a suspended Organization resolves to no session |
 | `created_at` | `timestamptz` | default `now()` |
+
+### `stores`
+A location within an Organization. A **tag, not a tenant boundary** — see
+§5 and CONTEXT.md's "Store".
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `organization_id` | `uuid` FK → `organizations.id` | `ON DELETE CASCADE` |
+| `name` | `text` NOT NULL | |
+| `status` | `store_status` | default `active`. Mirrors `organizations.status`, one level down — a suspended Store drops out of the switcher and bounces a member scoped to it back to `/select-store` |
+| `created_at` | `timestamptz` | default `now()` |
+
+**Indexes:** `(organization_id)`
+**RLS:** the standard `tenant_isolation` policy + `FORCE` — an ordinary
+Organization-scoped table, like `products`. It is *not* exempt the way the
+auth tables are; by the time anything queries it, the Organization scope is
+established.
+
+### `member_stores`
+Which Stores a member may work in — an explicit grant, one row per
+(member, Store).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid` PK | |
+| `member_id` | `uuid` FK → `members.id` | `ON DELETE CASCADE` |
+| `store_id` | `uuid` FK → `stores.id` | `ON DELETE CASCADE` |
+| `created_at` | `timestamptz` | default `now()` |
+
+**Indexes:** `(member_id, store_id)` UNIQUE, `(member_id)`, `(store_id)`
+**RLS:** none — exempt alongside `members`. `getCurrentUser()` reads it to
+resolve the session's active Store *before* the Organization scope is
+established, so it can't be gated on that scope. Every query filters by
+`member_id` (itself resolved inside an org-scoped lookup) by hand.
 
 ### Auth tables
 
@@ -252,6 +315,7 @@ Backs the session cookie.
 | `user_id` | `uuid` FK → `users.id` | `ON DELETE CASCADE` |
 | `token` | `text` UNIQUE | stored as issued. A downgrade from the hash-only column this replaced — accepted knowingly, see [better-auth-spike.md §2](./research/better-auth-spike.md) |
 | `active_organization_id` | `uuid` FK → `organizations.id` | **the tenancy seam.** `src/lib/tenancy.ts` reads this; switching Organization re-stamps it |
+| `active_store_id` | `uuid` FK → `stores.id` | the active Store, one level down — but **not** a better-auth field (no plugin owns Stores). `getCurrentUser()` never trusts it directly: it re-validates against `member_stores` every request and falls back to the sole grant. Written only by direct Drizzle update (`setActiveStore`), like `users.must_change_password` |
 | `impersonated_by` | `uuid` FK → `users.id` | set while a platform admin acts as this user |
 | `ip_address`, `user_agent` | `text` | |
 | `expires_at` | `timestamptz` NOT NULL | |
@@ -288,13 +352,14 @@ A real, searchable entity (PRD §5.3) — not free text on the order.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `organization_id` | `uuid` FK → `organizations.id` | |
+| `store_id` | `uuid` FK → `stores.id` NOT NULL | the counter this Customer walked into. Denormalized, filtered explicitly — not an RLS clause (see §4, §5) |
 | `name` | `text` NOT NULL | |
 | `phone` | `text` NOT NULL | |
 | `address` | `text` | nullable at the DB level only for a handful of test customers that predate this field — required on the create-customer form for everyone going forward; needed to actually ship a Purchased item |
 | `created_at` | `timestamptz` | default `now()` |
 
-**Index:** `(organization_id, name)` — powers search-or-create while
-logging an order
+**Index:** `(organization_id, store_id, name)` — powers search-or-create
+while logging an order, within the active Store
 
 ### `products`
 The catalog entry.
@@ -383,6 +448,7 @@ from "handed off" without needing a full status column.
 |---|---|---|
 | `id` | `uuid` PK | |
 | `organization_id` | `uuid` FK | |
+| `store_id` | `uuid` FK → `stores.id` NOT NULL | the counter that took the Order — set from the session's active Store at save time, never user-entered |
 | `customer_id` | `uuid` FK → `customers.id` NOT NULL | |
 | `screenshot_url` | `text` | nullable — R2 object URL |
 | `notes` | `text` | nullable |
@@ -390,7 +456,7 @@ from "handed off" without needing a full status column.
 | `created_at` | `timestamptz` | |
 | `placed_at` | `timestamptz` | nullable — null means still a draft |
 
-**Indexes:** `(organization_id, customer_id)`, `(organization_id, created_at)`
+**Indexes:** `(organization_id, customer_id)`, `(organization_id, store_id, created_at, id)`
 
 ### `order_items`
 One line of an Order (PRD §5.5) — the unit the Supplier's Purchase Queue
@@ -402,6 +468,7 @@ here, not on `orders`** — see
 |---|---|---|
 | `id` | `uuid` PK | |
 | `organization_id` | `uuid` FK | denormalized |
+| `store_id` | `uuid` FK → `stores.id` NOT NULL | denormalized from `orders.store_id` — the Purchase and Packing Queues group these across many orders, so it has to be on the row, not joined |
 | `order_id` | `uuid` FK → `orders.id` NOT NULL | `ON DELETE CASCADE` |
 | `product_id` | `uuid` FK → `products.id` NOT NULL | |
 | `quantity` | `int` NOT NULL | default `1` |
@@ -411,10 +478,11 @@ here, not on `orders`** — see
 | `created_at` | `timestamptz` | |
 
 **Indexes:**
-- `(organization_id, product_id, status)` — powers the Purchase Queue:
-  group pending items by product across every order/customer
-- `(organization_id, status, created_at)` — powers the Packing Queue and
-  general order-log filtering
+- `(organization_id, store_id, product_id, status)` — powers the Purchase
+  Queue: group pending items by product, within one Store, across every
+  order/customer
+- `(organization_id, store_id, status, created_at)` — powers the Packing
+  Queue and general order-log filtering
 - `(organization_id, order_id)` — look up an order's items
 
 ### `order_item_modifiers`
@@ -444,17 +512,27 @@ stored directly on every table anyway because:
    to join back to check tenant ownership, the direct column means RLS
    still catches it.
 
+**`store_id` is denormalized the same way** (onto `orders`,
+`order_items`, `customers`) — but for reason 1 only, not reason 2. It is
+*not* an RLS clause: Store is a tag, not a tenant boundary (CONTEXT.md), so
+a query that forgets its `store_id` filter shows the wrong Store's rows to
+someone in the *same* Organization — a bug, not a tenant leak. The denorm
+buys the uniform, joinless `WHERE organization_id = … AND store_id = …` on
+every list, and the index locality the Purchase/Packing Queues need.
+
 ## 5. Row-Level Security — enforced two ways, and neither is optional
 
 Every tenant-scoped table has RLS enabled, and the app additionally filters
 every query by `organization_id` explicitly.
 
 The exceptions are the auth tables — `organizations`, `users`, `members`,
-`accounts`, `sessions`, `invitations`, `verifications` and
-`impersonation_events`. Each is read in order to *establish* the tenant
-scope, so none can be gated on it. `members` is the one to watch: it is the
-table that answers "which Organization is this request in", so a query
-against it must be scoped by hand.
+`member_stores`, `accounts`, `sessions`, `invitations`, `verifications` and
+`impersonation_events`. Each is read in order to *establish* the tenant (or
+Store) scope, so none can be gated on it. `members` and `member_stores` are
+the ones to watch: together they answer "which Organization, and which
+Store, is this request in", so a query against either must be scoped by
+hand. `stores` itself is *not* an exception — it carries the ordinary
+policy, like `products`; nothing reads it before scope is established.
 
 Both layers matter, and this is **verified in CI** rather than by
 inspection — `tests/tenant-isolation.test.ts` asserts that a scope on one
@@ -469,7 +547,7 @@ alter table customers force row level security;
 create policy tenant_isolation on customers
   using (organization_id = current_setting('app.organization_id')::uuid);
 -- ...repeated for products, product_images, modifiers, modifier_options,
--- product_modifier_options, orders, order_items, order_item_modifiers
+-- product_modifier_options, orders, order_items, order_item_modifiers, stores
 ```
 
 1. **`ENABLE` alone doesn't apply to the table owner** — Postgres

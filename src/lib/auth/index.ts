@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
-import { impersonationEvents, members, organizations, users } from "@/db/schema";
+import { impersonationEvents, memberStores, members, organizations, sessions, users } from "@/db/schema";
 import { auth } from "./config";
 
 // The boundary between better-auth and the rest of the app. Feature code
@@ -33,6 +33,13 @@ export type SessionUser = {
   email: string;
   /** The *active* Organization, from the session — not a property of the user. */
   organizationId: string;
+  /**
+   * The active Store — resolved fresh every call, never trusted from the
+   * session cookie (see sessions.active_store_id's comment). Null when this
+   * member has no store grant yet, or has 2+ and hasn't chosen — either way
+   * the caller must send them to pick one before anything store-scoped.
+   */
+  storeId: string | null;
   role: AppRole;
   /** Set while a platform admin is acting as this user. */
   impersonatedBy: string | null;
@@ -61,14 +68,21 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 
   const [row] = await db
     .select({
+      memberId: members.id,
       role: members.role,
       memberStatus: members.status,
       organizationStatus: organizations.status,
       mustChangePassword: users.mustChangePassword,
+      // Folded into this query rather than a second round trip. It's a
+      // constant-vs-column join, so it matches at most one row; the value
+      // is still re-validated against member_stores below before it's
+      // trusted.
+      sessionActiveStoreId: sessions.activeStoreId,
     })
     .from(members)
     .innerJoin(organizations, eq(organizations.id, members.organizationId))
     .innerJoin(users, eq(users.id, members.userId))
+    .leftJoin(sessions, eq(sessions.id, session.session.id))
     .where(
       and(eq(members.userId, session.user.id), eq(members.organizationId, organizationId)),
     )
@@ -88,10 +102,41 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     name: session.user.name,
     email: session.user.email,
     organizationId,
+    storeId: await resolveActiveStoreId(row.memberId, row.sessionActiveStoreId),
     role: row.role as AppRole,
     impersonatedBy: session.session.impersonatedBy ?? null,
     mustChangePassword: row.mustChangePassword,
   };
+}
+
+/**
+ * The active Store, re-derived on every request rather than trusted from
+ * the session — `member_stores` is the only source of truth for what this
+ * member may work in.
+ *
+ * One extra query, on `member_stores` — RLS-exempt, alongside `members`
+ * (see DATA_MODEL §5): this runs *before* the Organization scope this
+ * member resolves to is established, so it cannot depend on it. `stores`
+ * itself is never touched here — it IS RLS-scoped, and its name/status
+ * aren't needed to pick an id.
+ */
+async function resolveActiveStoreId(
+  memberId: string,
+  sessionActiveStoreId: string | null,
+): Promise<string | null> {
+  const granted = await db
+    .select({ storeId: memberStores.storeId })
+    .from(memberStores)
+    .where(eq(memberStores.memberId, memberId));
+  const grantedIds = granted.map((g) => g.storeId);
+
+  if (sessionActiveStoreId && grantedIds.includes(sessionActiveStoreId)) {
+    return sessionActiveStoreId;
+  }
+  // No stashed choice (or a stale one — a grant since revoked): only safe
+  // to resolve silently when there is exactly one candidate. 0 or 2+ means
+  // the caller has to be sent to pick.
+  return grantedIds.length === 1 ? grantedIds[0] : null;
 }
 
 /** For Server Components/layouts that must be behind a session. */
@@ -196,6 +241,46 @@ export async function setActiveOrganization(organizationId: string): Promise<voi
     body: { organizationId },
     headers: await headers(),
   });
+}
+
+/**
+ * Re-stamps the session's active Store — the same idea as
+ * setActiveOrganization, one level down, but a plain Drizzle write rather
+ * than a better-auth API call: no plugin owns the concept of a Store, so
+ * there is no `auth.api.setActiveStore` to call. Written straight to
+ * `sessions.active_store_id` (see its own comment for why that is safe
+ * despite bypassing better-auth's session machinery).
+ *
+ * The membership+grant check here is for a clean error message — the real
+ * guard is resolveActiveStoreId() re-validating on every subsequent
+ * request, so a stale or forged value can resolve to no store but never to
+ * one this member isn't granted.
+ */
+export async function setActiveStore(storeId: string): Promise<void> {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) redirect("/login");
+
+  const organizationId = session.session.activeOrganizationId;
+  if (!organizationId) throw new Error("No active Organization.");
+
+  const [member] = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.userId, session.user.id), eq(members.organizationId, organizationId)))
+    .limit(1);
+  if (!member) throw new Error("Not a member of this Organization.");
+
+  const [grant] = await db
+    .select({ id: memberStores.id })
+    .from(memberStores)
+    .where(and(eq(memberStores.memberId, member.id), eq(memberStores.storeId, storeId)))
+    .limit(1);
+  if (!grant) throw new Error("You don't have access to that Store.");
+
+  await db
+    .update(sessions)
+    .set({ activeStoreId: storeId, updatedAt: new Date() })
+    .where(eq(sessions.id, session.session.id));
 }
 
 // --- Support impersonation ------------------------------------------------

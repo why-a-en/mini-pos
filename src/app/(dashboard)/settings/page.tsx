@@ -1,5 +1,8 @@
 import { isPlatformAdmin, listMemberships, requireUser, roleLabel, type AppRole } from "@/lib/auth";
+import { withCurrentOrganization } from "@/lib/tenancy";
+import { listMyStores } from "@/services/stores";
 import { OrganizationSwitcher } from "./organization-switcher";
+import { StoreSwitcher } from "./store-switcher";
 import { ImpersonationForm } from "./impersonation-form";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
@@ -31,6 +34,13 @@ export default async function SettingsPage() {
       roleLabel: roleLabel(m.role as AppRole),
     }));
 
+  // Only Stores this member can actually work in, and only the ones still
+  // active — a suspended one would bounce them straight back to
+  // /select-store.
+  const myStores = (await withCurrentOrganization((ctx) => listMyStores(ctx))).filter(
+    (s) => s.status === "active",
+  );
+
   return (
     <Screen>
       <TopBar brand title="Settings" eyebrow={roleLabel(user.role)} />
@@ -44,6 +54,15 @@ export default async function SettingsPage() {
               organizations={switchable}
               activeOrganizationId={user.organizationId}
             />
+          </>
+        )}
+
+        {/* Same rule as the Organization switcher above — hidden entirely
+            when there's only one Store to be in. */}
+        {myStores.length > 1 && (
+          <>
+            <SectionHeader>Store</SectionHeader>
+            <StoreSwitcher stores={myStores} activeStoreId={user.storeId} />
           </>
         )}
 

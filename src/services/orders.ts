@@ -38,15 +38,28 @@ export async function saveOrder(
   input: SaveOrderInput,
 ): Promise<{ orderId: string; placed: boolean }> {
   if (!input.customerId) throw new ServiceError("Missing customer.");
+  // withCurrentStore already guarantees this in the one call site that
+  // exists today (orders/actions.ts's saveOrderAction) — checked again here
+  // because this is the boundary a bug or a future caller would actually
+  // hit, not the wrapper.
+  if (!ctx.storeId) throw new ServiceError("No active Store — pick one in Settings.");
+  const storeId = ctx.storeId;
 
   let id = input.orderId;
   const notes = input.notes?.trim() || null;
 
   if (id) {
+    // storeId in the WHERE, not just organizationId: a draft belongs to
+    // the Store it was started in (its own row already carries one), and
+    // resuming it from a different Store the member also has access to
+    // would silently move it. Scoping the update this way makes that a
+    // no-op (0 rows touched) rather than a move — the wizard's own draft
+    // fetch (orders/new/page.tsx) is what actually prevents the wizard
+    // from offering a foreign-Store draft to resume in the first place.
     await ctx.tx
       .update(orders)
       .set({ notes, ...(input.place ? { placedAt: new Date() } : {}) })
-      .where(and(eq(orders.id, id), eq(orders.organizationId, ctx.organizationId)));
+      .where(and(eq(orders.id, id), eq(orders.organizationId, ctx.organizationId), eq(orders.storeId, storeId)));
   } else {
     // Only a brand-new order saved *as a draft* counts against the cap —
     // placing outright never creates a draft in the first place, and updating
@@ -74,6 +87,7 @@ export async function saveOrder(
       .insert(orders)
       .values({
         organizationId: ctx.organizationId,
+        storeId,
         customerId: input.customerId,
         notes,
         createdBy: ctx.userId,
@@ -89,6 +103,11 @@ export async function saveOrder(
       .values(
         input.items.map((item) => ({
           organizationId: ctx.organizationId,
+          // Denormalized from the order, not re-derived from ctx: an item
+          // added while resuming a draft belongs to the draft's own Store,
+          // which is always this one — the update branch above already
+          // refuses to touch a draft in a different Store.
+          storeId,
           orderId: id!,
           productId: item.productId,
           quantity: item.quantity,

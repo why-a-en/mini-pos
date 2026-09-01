@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { withCurrentOrganization } from "@/lib/tenancy";
+import { withCurrentStore } from "@/lib/tenancy";
 import { isUuid } from "@/lib/uuid";
 import {
   orders,
@@ -30,7 +30,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   // "invalid input syntax for type uuid" error instead of a normal 404.
   if (!isUuid(orderId)) notFound();
 
-  const data = await withCurrentOrganization(async ({ organizationId, tx }) => {
+  const data = await withCurrentStore(async ({ organizationId, storeId, tx }) => {
+    // storeId in the WHERE — an order deep-link from another Store in the
+    // same Organization 404s here rather than rendering, the same way a
+    // resumed draft can't be moved (see saveOrder's own comment): the
+    // recovery is switching Stores in Settings, not silently crossing one.
     const [order] = await tx
       .select({
         id: orders.id,
@@ -42,7 +46,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       })
       .from(orders)
       .innerJoin(customers, eq(customers.id, orders.customerId))
-      .where(and(eq(orders.id, orderId), eq(orders.organizationId, organizationId)))
+      .where(and(eq(orders.id, orderId), eq(orders.organizationId, organizationId), eq(orders.storeId, storeId)))
       .limit(1);
     if (!order) return null;
 

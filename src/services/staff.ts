@@ -1,5 +1,5 @@
-import { and, eq, ne } from "drizzle-orm";
-import { accounts, members, users } from "@/db/schema";
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { accounts, memberStores, members, stores, users } from "@/db/schema";
 import { hashPassword } from "@/lib/auth/hash";
 import { generateTemporaryPassword } from "./password";
 import { ServiceError, type AppRole, type ServiceContext } from "./types";
@@ -22,6 +22,10 @@ export type StaffMember = {
   role: AppRole;
   status: "active" | "suspended";
   joinedAt: Date;
+  /** Store names this member can work in, in grant order. Empty means no
+   *  access at all — reachable only if every one of their grants was later
+   *  removed, since addStaff below always creates at least one. */
+  storeNames: string[];
 };
 
 export async function listStaff(ctx: ServiceContext): Promise<StaffMember[]> {
@@ -40,7 +44,28 @@ export async function listStaff(ctx: ServiceContext): Promise<StaffMember[]> {
     .where(eq(members.organizationId, ctx.organizationId))
     .orderBy(members.createdAt);
 
-  return rows.map((r) => ({ ...r, role: r.role as AppRole }));
+  const memberIds = rows.map((r) => r.memberId);
+  const storeRows =
+    memberIds.length === 0
+      ? []
+      : await ctx.tx
+          .select({ memberId: memberStores.memberId, storeName: stores.name })
+          .from(memberStores)
+          .innerJoin(stores, eq(stores.id, memberStores.storeId))
+          .where(inArray(memberStores.memberId, memberIds));
+
+  const storeNamesByMember = new Map<string, string[]>();
+  for (const r of storeRows) {
+    const list = storeNamesByMember.get(r.memberId) ?? [];
+    list.push(r.storeName);
+    storeNamesByMember.set(r.memberId, list);
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    role: r.role as AppRole,
+    storeNames: storeNamesByMember.get(r.memberId) ?? [],
+  }));
 }
 
 /**
@@ -55,13 +80,24 @@ export async function listStaff(ctx: ServiceContext): Promise<StaffMember[]> {
  */
 export async function addStaff(
   ctx: ServiceContext,
-  input: { name: string; email: string; role: AppRole },
+  input: { name: string; email: string; role: AppRole; storeIds: string[] },
 ): Promise<StaffMember & { temporaryPassword: string }> {
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
 
   if (!name) throw new ServiceError("Name is required.");
   if (!email) throw new ServiceError("Email is required.");
+  if (input.storeIds.length === 0) {
+    throw new ServiceError("Pick at least one Store this person can work in.");
+  }
+
+  const storeRows = await ctx.tx
+    .select({ id: stores.id, name: stores.name })
+    .from(stores)
+    .where(and(inArray(stores.id, input.storeIds), eq(stores.organizationId, ctx.organizationId)));
+  if (storeRows.length !== input.storeIds.length) {
+    throw new ServiceError("One of those Stores isn't in this Organization.");
+  }
 
   const [existing] = await ctx.tx
     .select({ id: users.id })
@@ -103,6 +139,10 @@ export async function addStaff(
     .values({ organizationId: ctx.organizationId, userId: user.id, role: input.role })
     .returning({ id: members.id, status: members.status, createdAt: members.createdAt });
 
+  await ctx.tx
+    .insert(memberStores)
+    .values(input.storeIds.map((storeId) => ({ memberId: member.id, storeId })));
+
   // The only time this value exists in readable form. The caller shows it
   // to the Admin once; nothing persists it.
   return {
@@ -113,6 +153,7 @@ export async function addStaff(
     role: input.role,
     status: member.status,
     joinedAt: member.createdAt,
+    storeNames: storeRows.map((s) => s.name),
     temporaryPassword,
   };
 }

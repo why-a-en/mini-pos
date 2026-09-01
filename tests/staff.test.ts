@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { db, withOrganizationScope } from "@/db/client";
-import { accounts, members, organizations, users } from "@/db/schema";
+import { accounts, memberStores, members, organizations, stores, users } from "@/db/schema";
 import { auth } from "@/lib/auth/config";
 import {
   addStaff,
@@ -16,12 +16,13 @@ import { ServiceError, type ServiceContext } from "@/services/types";
 const TAG = `staff-${Date.now()}`;
 
 let orgId: string;
+let storeId: string;
 let adminUserId: string;
 let adminMemberId: string;
 
 function asAdmin<T>(fn: (ctx: ServiceContext) => Promise<T>) {
   return withOrganizationScope(orgId, (tx) =>
-    fn({ organizationId: orgId, userId: adminUserId, tx }),
+    fn({ organizationId: orgId, storeId, userId: adminUserId, tx }),
   );
 }
 
@@ -53,6 +54,17 @@ beforeAll(async () => {
     .values({ organizationId: orgId, userId: adminUserId, role: "admin" })
     .returning({ id: members.id });
   adminMemberId = member.id;
+
+  // `stores` is RLS-scoped — insert through the scope. `member_stores` is
+  // exempt, so a plain insert is fine.
+  storeId = await withOrganizationScope(orgId, async (tx) => {
+    const [store] = await tx
+      .insert(stores)
+      .values({ organizationId: orgId, name: `${TAG}-store` })
+      .returning({ id: stores.id });
+    return store.id;
+  });
+  await db.insert(memberStores).values({ memberId: adminMemberId, storeId });
 });
 
 afterAll(async () => {
@@ -61,7 +73,21 @@ afterAll(async () => {
     .from(members)
     .where(eq(members.organizationId, orgId));
   const userIds = owned.map((m) => m.userId);
+  // member_stores rows cascade from members, but delete explicitly so the
+  // order is unambiguous regardless of FK timing.
+  const memberRows = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(eq(members.organizationId, orgId));
+  if (memberRows.length > 0) {
+    await db.delete(memberStores).where(
+      inArray(memberStores.memberId, memberRows.map((m) => m.id)),
+    );
+  }
   await db.delete(members).where(eq(members.organizationId, orgId));
+  await withOrganizationScope(orgId, (tx) =>
+    tx.delete(stores).where(eq(stores.organizationId, orgId)),
+  );
   if (userIds.length > 0) {
     await db.delete(accounts).where(inArray(accounts.userId, userIds));
     await db.delete(users).where(inArray(users.id, userIds));
@@ -73,7 +99,7 @@ describe("addStaff", () => {
   it("issues a working temporary password and forces a change", async () => {
     const email = `${TAG}-new@staff.test`;
     const created = await asAdmin((ctx) =>
-      addStaff(ctx, { name: "New Hire", email, role: "support_agent" }),
+      addStaff(ctx, { name: "New Hire", email, role: "support_agent", storeIds: [storeId] }),
     );
 
     expect(created.temporaryPassword).toHaveLength(12);
@@ -88,10 +114,10 @@ describe("addStaff", () => {
 
   it("refuses an email that already exists on the platform", async () => {
     const email = `${TAG}-dup@staff.test`;
-    await asAdmin((ctx) => addStaff(ctx, { name: "First", email, role: "supplier" }));
+    await asAdmin((ctx) => addStaff(ctx, { name: "First", email, role: "supplier", storeIds: [storeId] }));
 
     await expect(
-      asAdmin((ctx) => addStaff(ctx, { name: "Second", email, role: "supplier" })),
+      asAdmin((ctx) => addStaff(ctx, { name: "Second", email, role: "supplier", storeIds: [storeId] })),
     ).rejects.toBeInstanceOf(ServiceError);
   });
 });
@@ -100,7 +126,7 @@ describe("resetStaffPassword", () => {
   it("replaces the old password and forces a change", async () => {
     const email = `${TAG}-reset@staff.test`;
     const created = await asAdmin((ctx) =>
-      addStaff(ctx, { name: "Forgetful", email, role: "supplier" }),
+      addStaff(ctx, { name: "Forgetful", email, role: "supplier", storeIds: [storeId] }),
     );
 
     // Clear the flag so we can prove the reset sets it again.
@@ -128,7 +154,10 @@ describe("resetStaffPassword", () => {
 
     await expect(
       withOrganizationScope(other.id, (tx) =>
-        resetStaffPassword({ organizationId: other.id, userId: adminUserId, tx }, adminMemberId),
+        resetStaffPassword(
+          { organizationId: other.id, storeId: null, userId: adminUserId, tx },
+          adminMemberId,
+        ),
       ),
     ).rejects.toBeInstanceOf(ServiceError);
 
@@ -167,7 +196,7 @@ describe("guards that stop an Organization locking itself out", () => {
 
   it("lets an Admin be demoted once a second Admin exists", async () => {
     const second = await asAdmin((ctx) =>
-      addStaff(ctx, { name: "Second Admin", email: `${TAG}-admin2@staff.test`, role: "admin" }),
+      addStaff(ctx, { name: "Second Admin", email: `${TAG}-admin2@staff.test`, role: "admin", storeIds: [storeId] }),
     );
 
     await asAdmin((ctx) =>

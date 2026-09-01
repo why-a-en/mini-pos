@@ -17,6 +17,9 @@ import { sql } from "drizzle-orm";
 // --- Enums ---------------------------------------------------------------
 
 export const organizationStatusEnum = pgEnum("organization_status", ["active", "suspended"]);
+// Mirrors organizationStatusEnum — the same "suspend without deleting"
+// lever, one level down, for a store that's temporarily closed.
+export const storeStatusEnum = pgEnum("store_status", ["active", "suspended"]);
 // Per-membership, deliberately not per-user. better-auth's admin plugin
 // offers users.banned, but that is global — suspending a Supplier who
 // sources for two resellers would lock them out of both. Access is granted
@@ -89,6 +92,37 @@ export const organizations = pgTable("organizations", {
   status: organizationStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("organizations_slug_unique").on(table.slug)]);
+
+// One physical/operational location within an Organization. A tag, not a
+// tenant boundary: unlike organization_id, store_id carries no RLS policy —
+// two stores are the same business, same staff pool, and an Admin routinely
+// needs to see both without a scope-switching dance. It exists so Orders,
+// Order Items and Customers can each be attributed to the counter they came
+// through; the catalog (products, modifiers) stays Organization-wide, not
+// per-store.
+//
+// RLS-protected like any ordinary Organization-scoped table (see
+// tenantIsolationPolicy below) — NOT exempt the way `organizations`/`members`
+// are, because by the time this is queried the Organization scope is already
+// established. The one place that reads it before that point
+// (getCurrentUser(), resolving the session's active store) reads
+// `member_stores` only, never this table directly — see its comment.
+export const stores = pgTable(
+  "stores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    status: storeStatusEnum("status").notNull().default("active"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("stores_organization_id_idx").on(table.organizationId),
+    tenantIsolationPolicy(),
+  ],
+).enableRLS();
 
 // The person. Deliberately NOT the membership — a Supplier sourcing for two
 // resellers is one user with two `members` rows. Email is globally unique
@@ -185,6 +219,36 @@ export const members = pgTable(
   ],
 );
 
+// Which Stores a member can work in — an explicit grant, set by the Admin
+// when the person is added (or edited) rather than inferred. A member with
+// no row here has no store to work in at all; one row is the common case,
+// two or more is what makes the Settings store switcher appear (see
+// src/lib/auth's listMemberStores).
+//
+// RLS-exempt, alongside `members` — getCurrentUser() must read this to
+// resolve the session's active store *before* the Organization scope is
+// established, so it cannot be gated on that scope. Every query against it
+// filters by member_id (itself already resolved inside an org-scoped
+// lookup) by hand instead.
+export const memberStores = pgTable(
+  "member_stores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("member_stores_member_store_unique").on(table.memberId, table.storeId),
+    index("member_stores_member_id_idx").on(table.memberId),
+    index("member_stores_store_id_idx").on(table.storeId),
+  ],
+);
+
 // Required by the organization plugin. Invitations are deferred from MVP
 // (ADR-0002) — the table exists so the plugin's schema validates, and stays
 // empty until the feature is built. Settle its RLS story then: it is
@@ -226,6 +290,17 @@ export const sessions = pgTable(
     // in several. src/lib/tenancy.ts reads this, not users.organization_id
     // (which no longer exists). ADR-0002 decision 3.
     activeOrganizationId: uuid("active_organization_id").references(() => organizations.id),
+    // The active Store, one level down from activeOrganizationId above —
+    // but NOT a better-auth field (no plugin owns the concept of a store).
+    // Unlike activeOrganizationId, nothing in src/lib/auth trusts this
+    // column at face value: getCurrentUser() re-validates it against the
+    // member's actual member_stores grants on every request and falls back
+    // to their sole store when it has none to trust, so a stale or
+    // tampered value here can, at worst, resolve to no active store — never
+    // to one the member isn't granted. Written only via direct Drizzle
+    // updates (setActiveStore in src/lib/auth), the same way
+    // users.mustChangePassword is — never through auth.api.*.
+    activeStoreId: uuid("active_store_id").references(() => stores.id),
     // Set by the admin plugin while a platform admin is acting as someone
     // else. Deleted with the session, which is why impersonationEvents below
     // exists as a durable record.
@@ -288,6 +363,13 @@ export const customers = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
+    // Which counter this Customer walked into. Denormalized rather than a
+    // tag-only concept — see stores' own comment — so every query that lists
+    // or searches Customers can filter by it directly. Not itself an RLS
+    // clause: organizationId above is still the only tenant boundary.
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id),
     name: text("name").notNull(),
     phone: text("phone").notNull(),
     // Nullable at the DB level even though the create-customer form
@@ -299,7 +381,7 @@ export const customers = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("customers_organization_name_idx").on(table.organizationId, table.name),
+    index("customers_organization_store_name_idx").on(table.organizationId, table.storeId, table.name),
     tenantIsolationPolicy(),
   ],
 ).enableRLS();
@@ -429,6 +511,12 @@ export const orders = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
+    // Which counter took this Order — set from the session's active store at
+    // save time (services/orders.ts), never user-entered. See stores' own
+    // comment for why this is a plain column, not a second RLS clause.
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id),
     customerId: uuid("customer_id")
       .notNull()
       .references(() => customers.id),
@@ -451,8 +539,15 @@ export const orders = pgTable(
     // (created_at, id) — see fetchOrdersPage. created_at alone isn't unique,
     // so the sort it defines isn't total and a cursor on it drops or repeats
     // rows exactly at a page boundary. Including id here lets Postgres serve
-    // the row-wise comparison and the ORDER BY from one index scan.
-    index("orders_organization_created_idx").on(table.organizationId, table.createdAt, table.id),
+    // the row-wise comparison and the ORDER BY from one index scan. storeId
+    // leads the same way organizationId does — every list this backs is
+    // scoped to one store first.
+    index("orders_organization_store_created_idx").on(
+      table.organizationId,
+      table.storeId,
+      table.createdAt,
+      table.id,
+    ),
     tenantIsolationPolicy(),
   ],
 ).enableRLS();
@@ -469,6 +564,14 @@ export const orderItems = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id),
+    // Denormalized from orders.storeId at insert time (services/orders.ts),
+    // same reasoning as organizationId above (DATA_MODEL §4): the Purchase
+    // and Packing Queues group these across many orders at once, so the
+    // column needs to be here directly rather than joined back through
+    // orders on every query.
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id),
     orderId: uuid("order_id")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
@@ -486,16 +589,18 @@ export const orderItems = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // Powers the Purchase Queue: group pending items by product across
-    // every order/customer.
-    index("order_items_org_product_status_idx").on(
+    // Powers the Purchase Queue: group pending items by product, within one
+    // store, across every order/customer.
+    index("order_items_org_store_product_status_idx").on(
       table.organizationId,
+      table.storeId,
       table.productId,
       table.status,
     ),
     // Powers Parcels (the packing queue) and general order-log filtering.
-    index("order_items_org_status_created_idx").on(
+    index("order_items_org_store_status_created_idx").on(
       table.organizationId,
+      table.storeId,
       table.status,
       table.createdAt,
     ),
