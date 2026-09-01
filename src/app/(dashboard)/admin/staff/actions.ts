@@ -55,6 +55,7 @@ export async function addStaffAction(
       name: String(formData.get("name") ?? ""),
       email: String(formData.get("email") ?? ""),
       role: String(formData.get("role") ?? "support_agent") as AppRole,
+      storeIds: formData.getAll("storeIds").map(String),
     }),
   );
   if (error) return { error };

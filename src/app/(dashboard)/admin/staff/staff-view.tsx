@@ -18,7 +18,9 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Icon } from "@/components/icon";
+import { CheckboxField } from "@/components/ui/checkbox";
 import type { StaffMember } from "@/services/staff";
+import type { Store } from "@/services/stores";
 import type { AppRole } from "@/services/types";
 import {
   addStaffAction,
@@ -42,9 +44,11 @@ const ROLE_LABELS: Record<AppRole, string> = {
 
 export function StaffView({
   staff,
+  stores,
   currentUserId,
 }: {
   staff: StaffMember[];
+  stores: Store[];
   currentUserId: string;
 }) {
   const [adding, setAdding] = useState(false);
@@ -70,6 +74,14 @@ export function StaffView({
                 <span className="truncate font-ui text-small text-text-faint">
                   {member.email}
                 </span>
+                {/* Hidden for the common case of one Store — see Settings'
+                    switcher for the same rule; listing it on every row when
+                    it's the only one is just noise. */}
+                {stores.length > 1 && (
+                  <span className="truncate font-ui text-small text-text-faint">
+                    {member.storeNames.length > 0 ? member.storeNames.join(", ") : "No stores"}
+                  </span>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {member.status === "suspended" && (
@@ -91,7 +103,7 @@ export function StaffView({
         </div>
       </ScrollBody>
 
-      <AddStaffSheet open={adding} onOpenChange={setAdding} />
+      <AddStaffSheet open={adding} onOpenChange={setAdding} stores={stores} />
       <ManageStaffSheet member={selected} onClose={() => setSelected(null)} />
     </Screen>
   );
@@ -100,9 +112,11 @@ export function StaffView({
 function AddStaffSheet({
   open,
   onOpenChange,
+  stores,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  stores: Store[];
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -110,14 +124,18 @@ function AddStaffSheet({
           fresh on every open — otherwise the previous submit's generated
           password would still be on screen the next time it opened. */}
       <SheetContent>
-        {open && <AddStaffForm onDone={() => onOpenChange(false)} />}
+        {open && <AddStaffForm stores={stores} onDone={() => onOpenChange(false)} />}
       </SheetContent>
     </Sheet>
   );
 }
 
-function AddStaffForm({ onDone }: { onDone: () => void }) {
+function AddStaffForm({ stores, onDone }: { stores: Store[]; onDone: () => void }) {
   const [role, setRole] = useState<AppRole>("support_agent");
+  // Every Store checked by default: the common case (one Store, or a
+  // brand-new Admin's first hire) needs the Admin to change nothing rather
+  // than tick every box by hand.
+  const [storeIds, setStoreIds] = useState<string[]>(() => stores.map((s) => s.id));
   const [state, formAction, pending] = useActionState(addStaffAction, undefined);
 
   // On success the sheet does NOT close by itself: the temporary password is
@@ -154,6 +172,31 @@ function AddStaffForm({ onDone }: { onDone: () => void }) {
             <SegmentedControl options={ROLE_OPTIONS} value={role} onChange={setRole} />
             <input type="hidden" name="role" value={role} />
           </Field>
+          {/* Hidden entirely for the common case of one Store, same rule as
+              the Settings switcher — nothing to choose, so nothing shown.
+              Its id still has to reach the server, via a plain hidden
+              input rather than the checkbox row below. */}
+          {stores.length > 1 ? (
+            <Field label="Stores" required>
+              <div className="grid gap-1">
+                {stores.map((s) => (
+                  <CheckboxField
+                    key={s.id}
+                    name="storeIds"
+                    value={s.id}
+                    checked={storeIds.includes(s.id)}
+                    onCheckedChange={(checked) =>
+                      setStoreIds((prev) => (checked ? [...prev, s.id] : prev.filter((id) => id !== s.id)))
+                    }
+                  >
+                    {s.name}
+                  </CheckboxField>
+                ))}
+              </div>
+            </Field>
+          ) : (
+            storeIds.map((id) => <input key={id} type="hidden" name="storeIds" value={id} />)
+          )}
           {state?.error && <p className="font-ui text-small text-danger">{state.error}</p>}
         </SheetBody>
         <SheetFooter>

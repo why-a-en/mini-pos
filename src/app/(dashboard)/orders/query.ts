@@ -1,7 +1,7 @@
 import "server-only";
 
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
-import { withCurrentOrganization } from "@/lib/tenancy";
+import { withCurrentStore } from "@/lib/tenancy";
 import { orders, orderItems, orderItemModifiers, customers, products, modifierOptions } from "@/db/schema";
 import type { OrderRowData } from "./orders-view";
 import type { WizardCustomer } from "./new-order-wizard";
@@ -81,18 +81,18 @@ function escapeLike(value: string): string {
  * plus how many exist in total so the list can say what it is not showing.
  */
 export async function fetchCustomerBrowse(): Promise<{ rows: WizardCustomer[]; total: number }> {
-  return withCurrentOrganization(async ({ organizationId, tx }) => {
+  return withCurrentStore(async ({ organizationId, storeId, tx }) => {
     const rows = await tx
       .select({ id: customers.id, name: customers.name, phone: customers.phone, address: customers.address })
       .from(customers)
-      .where(eq(customers.organizationId, organizationId))
+      .where(and(eq(customers.organizationId, organizationId), eq(customers.storeId, storeId)))
       .orderBy(asc(customers.name))
       .limit(CUSTOMER_BROWSE_LIMIT);
 
     const [totalRow] = await tx
       .select({ value: count() })
       .from(customers)
-      .where(eq(customers.organizationId, organizationId));
+      .where(and(eq(customers.organizationId, organizationId), eq(customers.storeId, storeId)));
 
     return { rows, total: totalRow?.value ?? rows.length };
   });
@@ -115,11 +115,17 @@ export async function searchCustomers(query: string): Promise<WizardCustomer[]> 
   if (!q) return [];
   const pattern = `%${escapeLike(q)}%`;
 
-  return withCurrentOrganization(async ({ organizationId, tx }) =>
+  return withCurrentStore(async ({ organizationId, storeId, tx }) =>
     tx
       .select({ id: customers.id, name: customers.name, phone: customers.phone, address: customers.address })
       .from(customers)
-      .where(and(eq(customers.organizationId, organizationId), or(ilike(customers.name, pattern), ilike(customers.phone, pattern))))
+      .where(
+        and(
+          eq(customers.organizationId, organizationId),
+          eq(customers.storeId, storeId),
+          or(ilike(customers.name, pattern), ilike(customers.phone, pattern)),
+        ),
+      )
       .orderBy(asc(customers.name))
       .limit(CUSTOMER_SEARCH_LIMIT),
   );
@@ -140,9 +146,10 @@ export async function searchCustomers(query: string): Promise<WizardCustomer[]> 
 export async function fetchOrdersPage(filters: OrdersFilters, cursor: OrdersCursor | null): Promise<OrdersPage> {
   const q = filters.q.trim();
 
-  return withCurrentOrganization(async ({ organizationId, tx }) => {
+  return withCurrentStore(async ({ organizationId, storeId, tx }) => {
     const where = and(
       eq(orders.organizationId, organizationId),
+      eq(orders.storeId, storeId),
       ...(filters.from ? [gte(orders.createdAt, new Date(filters.from))] : []),
       ...(filters.to ? [lte(orders.createdAt, new Date(filters.to))] : []),
       ...(filters.status === "draft" ? [isNull(orders.placedAt)] : []),
@@ -190,6 +197,7 @@ export async function fetchOrdersPage(filters: OrdersFilters, cursor: OrdersCurs
         .where(
           and(
             eq(orders.organizationId, organizationId),
+            eq(orders.storeId, storeId),
             ...(filters.from ? [gte(orders.createdAt, new Date(filters.from))] : []),
             ...(filters.to ? [lte(orders.createdAt, new Date(filters.to))] : []),
             ...(filters.status === "draft" ? [isNull(orders.placedAt)] : []),

@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { withCurrentOrganization } from "@/lib/tenancy";
+import { withCurrentStore } from "@/lib/tenancy";
 import { orderItems, orders, products, customers, orderItemModifiers, modifierOptions } from "@/db/schema";
 import { ParcelsView, type ParcelItem, type ParcelStage } from "./parcels-view";
 
@@ -17,7 +17,7 @@ export default async function ParcelsPage({
   const statusFilter: readonly ParcelStage[] =
     status && (STAGES as readonly string[]).includes(status) ? [status as ParcelStage] : STAGES;
 
-  const items: ParcelItem[] = await withCurrentOrganization(async ({ organizationId, tx }) => {
+  const items: ParcelItem[] = await withCurrentStore(async ({ organizationId, storeId, tx }) => {
     const rows = await tx
       .select({
         id: orderItems.id,
@@ -34,7 +34,13 @@ export default async function ParcelsPage({
       .innerJoin(products, eq(products.id, orderItems.productId))
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
       .innerJoin(customers, eq(customers.id, orders.customerId))
-      .where(and(eq(orderItems.organizationId, organizationId), inArray(orderItems.status, statusFilter)))
+      .where(
+        and(
+          eq(orderItems.organizationId, organizationId),
+          eq(orderItems.storeId, storeId),
+          inArray(orderItems.status, statusFilter),
+        ),
+      )
       .orderBy(asc(orderItems.createdAt));
 
     const itemIds = rows.map((r) => r.id);

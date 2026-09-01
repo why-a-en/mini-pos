@@ -13,6 +13,18 @@ history; renamed to avoid colliding with the unrelated "Supplier" role
 below.
 _Avoid_: Vendor, tenant, account, business.
 
+**Store**: A location within an Organization — the counter an Order,
+Customer or Order Item belongs to. A *tag, not a tenant boundary*: unlike
+Organization, it carries no row-level-security policy, because two Stores
+are the same business with the same staff pool and an Admin routinely
+works across both. The catalog (Products, Modifiers) stays
+Organization-wide; only the transactional records are Store-scoped. A
+member is granted specific Stores (see `member_stores`); with two or more,
+Settings shows a Store switcher. An Organization with no Store is
+non-functional — its Admin is walked through creating the first one at
+`/onboarding` on first login.
+_Avoid_: Branch, outlet, location (fine in conversation), shop.
+
 **Admin**: The staff role that runs an Organization from the inside —
 manages its staff, edits its details, and reads its reports. Access is a
 *superset* of the other two roles, so an Admin who also logs Orders needs

@@ -10,6 +10,7 @@ import {
   orders,
   organizations,
   products,
+  stores,
   users,
 } from "@/db/schema";
 import { MAX_OPEN_DRAFTS_PER_USER, cancelOrderItem, saveOrder } from "@/services/orders";
@@ -22,6 +23,8 @@ const TAG = `orders-${Date.now()}`;
 
 let orgId: string;
 let otherOrgId: string;
+let storeId: string;
+let otherStoreId: string;
 let userId: string;
 let customerId: string;
 let productId: string;
@@ -29,12 +32,15 @@ let optionId: string;
 
 /** Runs `fn` with a service context for `org`, inside a scoped transaction. */
 function asOrg<T>(org: string, fn: (ctx: ServiceContext) => Promise<T>) {
-  return withOrganizationScope(org, (tx) => fn({ organizationId: org, userId, tx }));
+  const sid = org === orgId ? storeId : otherStoreId;
+  return withOrganizationScope(org, (tx) => fn({ organizationId: org, storeId: sid, userId, tx }));
 }
 
 /** Same, in the main Organization but acting as a different person. */
 function asUser<T>(actor: string, fn: (ctx: ServiceContext) => Promise<T>) {
-  return withOrganizationScope(orgId, (tx) => fn({ organizationId: orgId, userId: actor, tx }));
+  return withOrganizationScope(orgId, (tx) =>
+    fn({ organizationId: orgId, storeId, userId: actor, tx }),
+  );
 }
 
 const extraUsers: string[] = [];
@@ -59,6 +65,22 @@ beforeAll(async () => {
   orgId = org.id;
   otherOrgId = other.id;
 
+  // `stores` is RLS-scoped — insert each through its own org's scope.
+  storeId = await withOrganizationScope(orgId, async (tx) => {
+    const [row] = await tx
+      .insert(stores)
+      .values({ organizationId: orgId, name: `${TAG}-store` })
+      .returning({ id: stores.id });
+    return row.id;
+  });
+  otherStoreId = await withOrganizationScope(otherOrgId, async (tx) => {
+    const [row] = await tx
+      .insert(stores)
+      .values({ organizationId: otherOrgId, name: `${TAG}-other-store` })
+      .returning({ id: stores.id });
+    return row.id;
+  });
+
   const [user] = await db
     .insert(users)
     .values({ name: `${TAG} agent`, email: `${TAG}@orders.test` })
@@ -68,7 +90,7 @@ beforeAll(async () => {
   await asOrg(orgId, async ({ tx }) => {
     const [customer] = await tx
       .insert(customers)
-      .values({ organizationId: orgId, name: `${TAG}-customer`, phone: "0900000000" })
+      .values({ organizationId: orgId, storeId, name: `${TAG}-customer`, phone: "0900000000" })
       .returning({ id: customers.id });
     customerId = customer.id;
 
@@ -121,6 +143,7 @@ afterAll(async () => {
       await tx.delete(modifiers).where(eq(modifiers.organizationId, org));
       await tx.delete(products).where(eq(products.organizationId, org));
       await tx.delete(customers).where(eq(customers.organizationId, org));
+      await tx.delete(stores).where(eq(stores.organizationId, org));
     });
   }
   await db.delete(users).where(inArray(users.id, [userId, ...extraUsers]));

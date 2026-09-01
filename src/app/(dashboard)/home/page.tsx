@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { requireUser, roleLabel, type AppRole } from "@/lib/auth";
-import { withCurrentOrganization } from "@/lib/tenancy";
+import { withCurrentStore } from "@/lib/tenancy";
 import { orders, orderItems, customers, products } from "@/db/schema";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
@@ -28,6 +28,7 @@ interface Shortcut {
 const SHORTCUTS_BY_ROLE: Record<AppRole, Shortcut[]> = {
   admin: [
     { href: "/admin/staff", label: "Staff", icon: "user-plus" },
+    { href: "/admin/stores", label: "Stores", icon: "store" },
     { href: "/purchase-queue", label: "To Purchase", icon: "shopping-cart" },
     { href: "/parcels", label: "Parcels", icon: "box" },
     { href: "/customers", label: "Customers", icon: "users" },
@@ -90,12 +91,12 @@ export default async function HomePage() {
   // many rows render before "See all".
   const PREVIEW_CAP = 5;
 
-  const { storeToday, draftTotal, draftPreview, purchaseTotal, purchasePreview } = await withCurrentOrganization(
-    async ({ organizationId, tx }): Promise<HomeData> => {
+  const { storeToday, draftTotal, draftPreview, purchaseTotal, purchasePreview } = await withCurrentStore(
+    async ({ organizationId, storeId, tx }): Promise<HomeData> => {
       const rows = await tx
         .select({ id: orders.id })
         .from(orders)
-        .where(and(eq(orders.organizationId, organizationId), gte(orders.placedAt, startOfToday)));
+        .where(and(eq(orders.organizationId, organizationId), eq(orders.storeId, storeId), gte(orders.placedAt, startOfToday)));
       const storeToday = rows.length;
 
       // Pending Order Items grouped by product (same shape as
@@ -108,7 +109,7 @@ export default async function HomePage() {
         .select({ productId: orderItems.productId, productName: products.name, orderId: orderItems.orderId, quantity: orderItems.quantity })
         .from(orderItems)
         .innerJoin(products, eq(products.id, orderItems.productId))
-        .where(and(eq(orderItems.organizationId, organizationId), eq(orderItems.status, "pending")));
+        .where(and(eq(orderItems.organizationId, organizationId), eq(orderItems.storeId, storeId), eq(orderItems.status, "pending")));
 
       const byProduct = new Map<string, { productId: string; productName: string; totalQuantity: number; orderIds: Set<string> }>();
       for (const r of pendingRows) {
@@ -137,7 +138,7 @@ export default async function HomePage() {
         .select({ id: orders.id, customerName: customers.name })
         .from(orders)
         .innerJoin(customers, eq(customers.id, orders.customerId))
-        .where(and(eq(orders.organizationId, organizationId), isNull(orders.placedAt)))
+        .where(and(eq(orders.organizationId, organizationId), eq(orders.storeId, storeId), isNull(orders.placedAt)))
         .orderBy(desc(orders.createdAt));
 
       const previewIds = draftRows.slice(0, PREVIEW_CAP).map((d) => d.id);
