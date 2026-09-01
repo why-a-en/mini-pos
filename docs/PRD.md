@@ -1,4 +1,4 @@
-# PRD: Mini POS — Order & Product Coordination Platform
+# PRD: SuSeeBook — Order & Product Coordination Platform
 
 **Status:** Draft v2
 **Owner:** Yan Min Thwin

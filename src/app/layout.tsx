@@ -20,7 +20,7 @@ const martianMono = Martian_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mini POS",
+  title: "SuSeeBook",
   description: "Product catalog and daily order coordination for Support Agents and Suppliers.",
 };
 

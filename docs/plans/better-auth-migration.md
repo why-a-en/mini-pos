@@ -13,7 +13,7 @@ and support impersonation.
 **As of 2026-08-30 the database holds seed data only** — one Organization
 (`Test Organization`) and two users, `cs@test.local` and
 `supplier@test.local`. Verified directly against Neon `main`, the only
-branch of the only `mini-pos` project. No external client has been
+branch of the only `suseebook` project. No external client has been
 onboarded.
 
 That makes this migration close to risk-free *today*: no maintenance window,
