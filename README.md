@@ -98,6 +98,8 @@ Full rationale in [`docs/TECH_STACK.md`](./docs/TECH_STACK.md).
 
 Two long-lived branches: **`dev`** (default, → staging) and **`main`**
 (→ production). Short-lived `feat/…`, `fix/…`, `chore/…` branches off `dev`,
-merged by PR into `dev`; a `dev` → `main` PR is a release. Neon branches the
-database per PR, so migrations never run against production data. Details in
-[`CLAUDE.md`](./CLAUDE.md).
+merged by PR into `dev`; a `dev` → `main` PR is a release. Merged branches
+auto-delete, and a weekly Action sweeps branches idle for 30+ days (leaving
+`dev`, `main`, `prototype/*`, and anything with an open PR). Neon branches
+the database per PR, so migrations never run against production data.
+Details in [`CLAUDE.md`](./CLAUDE.md).

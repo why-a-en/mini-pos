@@ -21,8 +21,11 @@ Rules:
 - **Hotfix:** branch off `main`, PR back into `main`, then immediately
   merge `main` back down into `dev` (or cherry-pick) so the two don't
   diverge.
-- Merged PR branches auto-delete (repo setting). `prototype/*` branches are
-  kept deliberately — see the note on Claude Code worktrees below.
+- Merged PR branches auto-delete (repo setting); a weekly Action
+  (`.github/workflows/stale-branches.yml`) also removes any branch with no
+  commit in 30 days. Neither touches `dev`, `main`, `prototype/*`, or a
+  branch with an open PR — `prototype/*` branches are kept deliberately
+  (see the note on Claude Code worktrees below).
 - Neon creates a database branch per git branch/PR automatically (via the
   Vercel integration), so schema migrations in a PR run against an isolated
   DB branch, never against production data.

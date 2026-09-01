@@ -1,0 +1,91 @@
+name: Delete stale branches
+
+# Weekly sweep: remove branches with no commits in STALE_DAYS days, so the
+# branch list stays a picture of what's actually in flight. Merged PR
+# branches are already auto-deleted (repo setting) — this catches the
+# abandoned ones that never got a PR, or whose PR was closed unmerged.
+#
+# Never touches: dev, main, or anything under prototype/ (kept deliberately
+# — see CLAUDE.md). Also skips any branch with an open PR.
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Mondays, 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted without deleting"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    env:
+      STALE_DAYS: "30"
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const STALE_DAYS = Number(process.env.STALE_DAYS);
+            const dryRun = context.eventName === 'workflow_dispatch'
+              ? core.getBooleanInput('dry_run', { required: false })
+              : false;
+            const cutoff = Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000;
+            const keep = (name) =>
+              name === 'dev' || name === 'main' || name.startsWith('prototype/');
+
+            const openPrHeads = new Set(
+              (await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100,
+              })).map((pr) => pr.head.ref),
+            );
+
+            const branches = await github.paginate(github.rest.repos.listBranches, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            const deleted = [];
+            const kept = [];
+            for (const b of branches) {
+              if (keep(b.name)) continue;
+              if (openPrHeads.has(b.name)) { kept.push(`${b.name} (open PR)`); continue; }
+
+              const { data: commit } = await github.rest.repos.getCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: b.commit.sha,
+              });
+              const when = new Date(
+                commit.commit.committer?.date ?? commit.commit.author?.date,
+              ).getTime();
+              if (when >= cutoff) { kept.push(`${b.name} (fresh)`); continue; }
+
+              const ageDays = Math.floor((Date.now() - when) / 86400000);
+              if (dryRun) {
+                deleted.push(`${b.name} (${ageDays}d — would delete)`);
+                continue;
+              }
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${b.name}`,
+              });
+              deleted.push(`${b.name} (${ageDays}d)`);
+            }
+
+            core.summary
+              .addHeading(dryRun ? 'Stale branches (dry run)' : 'Deleted stale branches')
+              .addList(deleted.length ? deleted : ['none'])
+              .addHeading('Kept')
+              .addList(kept.length ? kept : ['none'])
+              .write();
