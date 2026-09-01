@@ -1,16 +1,28 @@
 ## Git workflow
 
-**GitHub Flow** (trunk-based) — not Gitflow. No `develop`/`release`/`hotfix`
-branches, no version tags; this is a continuously-deployed app, not a
-versioned release.
+**Two long-lived branches**, no version tags — this is a continuously-deployed
+app, not a versioned release:
 
-- `main` is always deployable; Vercel auto-deploys it to production on merge.
-- Work happens on short-lived branches off `main`, prefixed by type:
+- **`dev`** — the default branch and integration target. Deploys to the
+  **staging** environment. Every feature branch opens its PR here.
+- **`main`** — production. Only ever updated by a **`dev` → `main` PR**
+  ("release"). Vercel's Production Branch is pinned to `main`, so a merge
+  here is a production deploy.
+
+Rules:
+
+- Work happens on short-lived branches off `dev`, prefixed by type:
   `feat/…`, `fix/…`, `chore/…` (e.g. `feat/order-status`, `fix/image-upload`).
-- Open a PR to get a Vercel Preview URL automatically; review the diff and
-  the live preview, then merge — don't push directly to `main` once more
-  than one person is committing.
-- Hotfixes are just another branch off `main`; there's no separate hotfix flow.
+- Open a PR **into `dev`** to get a Vercel Preview URL automatically; review
+  the diff and the live preview, then merge. Don't push directly to `dev`
+  or `main`.
+- **Release:** open a PR from `dev` to `main` when staging is good. Keep it
+  a plain merge (no squash) so `main`'s history stays a subset of `dev`'s.
+- **Hotfix:** branch off `main`, PR back into `main`, then immediately
+  merge `main` back down into `dev` (or cherry-pick) so the two don't
+  diverge.
+- Merged PR branches auto-delete (repo setting). `prototype/*` branches are
+  kept deliberately — see the note on Claude Code worktrees below.
 - Neon creates a database branch per git branch/PR automatically (via the
   Vercel integration), so schema migrations in a PR run against an isolated
   DB branch, never against production data.
