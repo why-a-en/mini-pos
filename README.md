@@ -1,4 +1,4 @@
-# 🛒 Mini POS
+# 🛒 SuSeeBook
 
 An internal tool for a Myanmar-based **cross-border resale business**. The
 day looks like this:

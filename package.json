@@ -1,5 +1,5 @@
 {
-  "name": "mini-pos",
+  "name": "suseebook",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -57,14 +57,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/why-a-en/minipos.git"
+    "url": "git+https://github.com/why-a-en/suseebook.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "bugs": {
-    "url": "https://github.com/why-a-en/minipos/issues"
+    "url": "https://github.com/why-a-en/suseebook/issues"
   },
-  "homepage": "https://github.com/why-a-en/minipos#readme"
+  "homepage": "https://github.com/why-a-en/suseebook#readme"
 }
