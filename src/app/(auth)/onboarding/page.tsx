@@ -14,15 +14,22 @@ import { OnboardingSteps } from "./onboarding-steps";
 // Admin-only: requireAdmin() bounces anyone else. In practice nobody else
 // reaches it — the gate only fires for role === "admin".
 export default async function OnboardingPage() {
-  await requireAdmin();
+  const user = await requireAdmin();
   const stores = await withCurrentOrganization((ctx) => listStores(ctx));
 
   return (
     <main className="ds-grain-surface flex min-h-full flex-1 items-center justify-center bg-surface-page p-4">
       <div className="w-full max-w-[360px] space-y-6">
+        <Logo size={32} wordmark />
+
         <div className="space-y-1">
-          <Logo size={32} wordmark />
-          <p className="font-ui text-small text-text-muted">
+          <h1 className="font-display text-display-sm tracking-display text-text-strong">
+            Welcome, {user.name}
+          </h1>
+          <p className="font-ui text-small text-text-faint">
+            Signed in as {user.email}
+          </p>
+          <p className="pt-1 font-ui text-small text-text-muted">
             {stores.length === 0
               ? "Set up your first store. Every order, customer and parcel belongs to one."
               : "Store created. Add someone to your team, or skip and do it later."}
