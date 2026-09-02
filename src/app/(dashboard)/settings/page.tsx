@@ -1,9 +1,8 @@
-import { isPlatformAdmin, listMemberships, requireUser, roleLabel, type AppRole } from "@/lib/auth";
+import { listMemberships, requireUser, roleLabel, type AppRole } from "@/lib/auth";
 import { withCurrentOrganization } from "@/lib/tenancy";
 import { listMyStores } from "@/services/stores";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { StoreSwitcher } from "./store-switcher";
-import { ImpersonationForm } from "./impersonation-form";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -78,21 +77,9 @@ export default async function SettingsPage() {
           <span className="font-ui text-small text-text-faint">{user.email}</span>
         </div>
 
-        {/* Operator-only, gated on the PLATFORM_ADMIN_USER_IDS allowlist —
-            provisioning client Organizations (/platform) and acting on a
-            support request (impersonation). Hidden while already
-            impersonating: you can't provision clients as a client's user,
-            and nesting one impersonation in another has no meaning. */}
-        {isPlatformAdmin(user.id) && !user.impersonatedBy && (
-          <>
-            <SectionHeader>Platform admin</SectionHeader>
-            <Row href="/platform">
-              <span className="flex-1">Organizations</span>
-              <Icon name="chevron-right" size={16} className="shrink-0 text-text-faint" />
-            </Row>
-            <ImpersonationForm />
-          </>
-        )}
+        {/* No "Platform admin" section here — the operator surface is a
+            separate app entirely (/platform), and a platform operator is
+            never in this (tenant) Settings screen. See src/lib/auth. */}
 
         <Row href="/change-password">
           <span className="flex-1">Change password</span>

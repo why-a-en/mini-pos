@@ -113,7 +113,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 | `BETTER_AUTH_SECRET` | ✅ generate one |
 | `BETTER_AUTH_URL` | ✅ `http://localhost:3000` |
 | `R2_*` | ⬜ only for image uploads |
-| `PLATFORM_ADMIN_USER_IDS` | ⬜ only to test support impersonation |
+| `PLATFORM_ADMIN_USER_IDS` | ⬜ only to use the operator console (`/platform`) — comma-separated `users.id`s |
 
 ### 5 · Migrate and seed
 
@@ -139,9 +139,10 @@ one wired to a different Organization/Store situation:
 | `supplier@test.local` | both an Organization **and** a Store switcher |
 | `founder@test.local` | `/onboarding` — an Organization with no Store yet |
 
-*(No public signup. Bootstrap the first Organization with `pnpm org:create`;
-after that, an operator on the `PLATFORM_ADMIN_USER_IDS` allowlist creates
-more from **Settings → Platform admin → Organizations**.)*
+*(No public signup. Bootstrap the first Organization with `pnpm org:create`.
+After that, a **platform operator** — a `PLATFORM_ADMIN_USER_IDS` account
+with no tenant membership, created via `pnpm platform:add` — provisions more
+from the operator console at `/platform`.)*
 
 ---
 
@@ -157,6 +158,7 @@ more from **Settings → Platform admin → Organizations**.)*
 | `pnpm db:migrate` | apply migrations (via `DATABASE_URL_UNPOOLED`) |
 | `pnpm db:studio` | Drizzle Studio — browse the DB |
 | `pnpm org:create "<Org>" <email> "<Name>" <pw> [role] [store]` | provision an Organization + first Admin + first Store |
+| `pnpm platform:add <email> "<Name>" <pw>` | create a platform-operator account (then add its id to `PLATFORM_ADMIN_USER_IDS`) |
 | `pnpm member:add <email> <org-slug> <role> ["<Name>" <pw>] [--stores "A,B"]` | add someone to an Organization (creates the account if new) |
 | `pnpm tsx scripts/seed-test-data.mts` | (re)create the dev accounts above |
 

@@ -29,14 +29,17 @@ function formatDate(date: Date): string {
   });
 }
 
-export function PlatformView({ organizations }: { organizations: OrganizationSummary[] }) {
+export function OrganizationsView({
+  organizations,
+}: {
+  organizations: OrganizationSummary[];
+}) {
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<OrganizationSummary | null>(null);
 
   return (
     <Screen>
-      {/* Reached from Settings, not a tab — leads with a back arrow. */}
-      <TopBar backHref="/settings" title="Organizations" eyebrow="Platform admin" />
+      <TopBar backHref="/platform" title="Organizations" eyebrow="Operator" />
       <ScrollBody>
         <SectionHeader right={`${organizations.length}`}>All organizations</SectionHeader>
 

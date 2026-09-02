@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requirePlatformAdmin } from "@/lib/auth";
+import { requirePlatformUser } from "@/lib/auth";
 import { createOrganization, setOrganizationStatus } from "@/services/platform";
 import { ServiceError } from "@/services/types";
 
-// Thin wrappers — rules live in src/services/platform.ts. requirePlatformAdmin()
+// Thin wrappers — rules live in src/services/platform.ts. requirePlatformUser()
 // on every action, not just the page: hiding a link is not access control.
 
 export type PlatformActionResult = { error?: string };
@@ -21,14 +21,14 @@ export async function createOrganizationAction(
   _prev: NewOrgResult | undefined,
   formData: FormData,
 ): Promise<NewOrgResult> {
-  await requirePlatformAdmin();
+  await requirePlatformUser();
   try {
     const result = await createOrganization({
       organizationName: String(formData.get("organizationName") ?? ""),
       adminName: String(formData.get("adminName") ?? ""),
       adminEmail: String(formData.get("adminEmail") ?? ""),
     });
-    revalidatePath("/platform");
+    revalidatePath("/platform/organizations");
     return {
       slug: result.slug,
       adminEmail: result.adminEmail,
@@ -44,10 +44,12 @@ export async function setOrganizationStatusAction(
   organizationId: string,
   status: "active" | "suspended",
 ): Promise<PlatformActionResult> {
-  await requirePlatformAdmin();
+  await requirePlatformUser();
   try {
     await setOrganizationStatus({ organizationId, status });
-    revalidatePath("/platform");
+    revalidatePath("/platform/organizations");
+    // A suspended Organization must stop resolving to a session for its
+    // members — bust the whole tenant layout cache.
     revalidatePath("/", "layout");
     return {};
   } catch (error) {
