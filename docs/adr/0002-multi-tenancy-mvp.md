@@ -113,9 +113,16 @@ is what will eventually tell us what a signup flow should actually do.
 
 ## Deferred, deliberately
 
-Billing and plans, usage limits, self-serve signup, custom domains, a
-platform-admin console, per-tenant audit logs, SSO, invitations and password
-reset. None constrains the schema, so postponing them costs nothing.
+Billing and plans, usage limits, self-serve signup, custom domains,
+per-tenant audit logs, SSO, invitations and password reset. None constrains
+the schema, so postponing them costs nothing.
+
+> **Update (`feat/platform-console`):** the first slice of the deferred
+> "platform-admin console" now exists — `/platform`, gated on
+> `PLATFORM_ADMIN_USER_IDS`, lists every Organization and provisions a new
+> one with its first Admin (the in-app equivalent of `pnpm org:create`).
+> Suspension is wired to `organizations.status`. Still deferred: billing,
+> usage, and any *tenant-facing* onboarding.
 
 Two known gaps are recorded rather than fixed:
 

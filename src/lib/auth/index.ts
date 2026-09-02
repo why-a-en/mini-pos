@@ -159,6 +159,19 @@ export async function requireAdmin(): Promise<SessionUser> {
 }
 
 /**
+ * For the platform console — screens and actions only *we*, the operator,
+ * may reach (creating client Organizations, suspending them). Gated on the
+ * PLATFORM_ADMIN_USER_IDS allowlist, same as impersonation; there is no
+ * in-app path to becoming one. Refused while impersonating, since acting as
+ * a client's user is not the context to be provisioning other clients.
+ */
+export async function requirePlatformAdmin(): Promise<SessionUser> {
+  const user = await requireUser();
+  if (!isPlatformAdmin(user.id) || user.impersonatedBy) redirect("/");
+  return user;
+}
+
+/**
  * Replaces the caller's own password.
  *
  * `revokeOtherSessions` is deliberately on: someone changing their password

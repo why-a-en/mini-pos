@@ -139,8 +139,9 @@ one wired to a different Organization/Store situation:
 | `supplier@test.local` | both an Organization **and** a Store switcher |
 | `founder@test.local` | `/onboarding` — an Organization with no Store yet |
 
-*(No login screen for real setups — bootstrap with `pnpm org:create`; see
-below.)*
+*(No public signup. Bootstrap the first Organization with `pnpm org:create`;
+after that, an operator on the `PLATFORM_ADMIN_USER_IDS` allowlist creates
+more from **Settings → Platform admin → Organizations**.)*
 
 ---
 
