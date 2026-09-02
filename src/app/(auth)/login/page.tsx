@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { signedInHome } from "@/lib/auth";
 import { Logo } from "@/components/ui/logo";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage() {
-  // Real validation (getSessionUser), not cookie presence — see src/proxy.ts
-  // for why that distinction is what stops this from looping.
-  const user = await getCurrentUser();
-  if (user) redirect("/");
+  // Real validation (resolveSession), not cookie presence — see src/proxy.ts
+  // for why that distinction is what stops this from looping. A signed-in
+  // operator lands on /platform, a tenant on /.
+  const home = await signedInHome();
+  if (home) redirect(home);
 
   return (
     <main className="ds-grain-surface flex min-h-full flex-1 items-center justify-center bg-surface-page p-4">

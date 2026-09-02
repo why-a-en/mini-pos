@@ -1,9 +1,8 @@
-import { isPlatformAdmin, listMemberships, requireUser, roleLabel, type AppRole } from "@/lib/auth";
+import { listMemberships, requireUser, roleLabel, type AppRole } from "@/lib/auth";
 import { withCurrentOrganization } from "@/lib/tenancy";
 import { listMyStores } from "@/services/stores";
 import { OrganizationSwitcher } from "./organization-switcher";
 import { StoreSwitcher } from "./store-switcher";
-import { ImpersonationForm } from "./impersonation-form";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -78,16 +77,9 @@ export default async function SettingsPage() {
           <span className="font-ui text-small text-text-faint">{user.email}</span>
         </div>
 
-        {/* Not a platform-admin console — ADR-0002 defers that. Just enough
-            to act on a client's support request, gated on the
-            PLATFORM_ADMIN_USER_IDS allowlist. Hidden while already
-            impersonating, since nesting one inside another has no meaning. */}
-        {isPlatformAdmin(user.id) && !user.impersonatedBy && (
-          <>
-            <SectionHeader>Platform admin</SectionHeader>
-            <ImpersonationForm />
-          </>
-        )}
+        {/* No "Platform admin" section here — the operator surface is a
+            separate app entirely (/platform), and a platform operator is
+            never in this (tenant) Settings screen. See src/lib/auth. */}
 
         <Row href="/change-password">
           <span className="flex-1">Change password</span>

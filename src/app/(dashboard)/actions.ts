@@ -8,7 +8,6 @@ import {
   requireUser,
   setActiveOrganization,
   setActiveStore,
-  startImpersonation,
   stopImpersonation,
 } from "@/lib/auth";
 
@@ -53,37 +52,14 @@ export async function switchStoreAction(storeId: string) {
 }
 
 /**
- * Begins acting as another user for support. Guarded inside
- * startImpersonation() — the allowlist check is not the caller's to make.
+ * Ends an impersonated session and returns the operator to their own —
+ * called from the ImpersonationBanner, which only ever renders inside a
+ * (tenant) impersonated session. Starting impersonation lives on the
+ * operator side (src/app/platform/impersonate).
  */
-export type ImpersonationActionState = { error?: string } | undefined;
-
-export async function startImpersonationAction(
-  _prev: ImpersonationActionState,
-  formData: FormData,
-): Promise<ImpersonationActionState> {
-  const email = String(formData.get("email") ?? "").trim();
-  if (!email) return { error: "Enter an email address." };
-
-  try {
-    await startImpersonation(email);
-  } catch (error) {
-    // Shown inline, the way the login form shows a bad password. Throwing
-    // here would surface Next's full-page runtime error instead, which is
-    // both alarming and gives the admin no way back to the form.
-    return { error: error instanceof Error ? error.message : "Could not impersonate." };
-  }
-
-  revalidatePath("/", "layout");
-  // Deliberately outside the try: redirect() signals by throwing, and
-  // catching that would turn a successful impersonation into an error.
-  redirect("/");
-}
-
-/** Returns the admin to their own session and closes the audit row. */
 export async function stopImpersonationAction() {
   await stopImpersonation();
 
   revalidatePath("/", "layout");
-  redirect("/settings");
+  redirect("/platform");
 }

@@ -4,15 +4,15 @@ import { useActionState } from "react";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { startImpersonationAction } from "../actions";
+import { startImpersonationAction } from "./actions";
 
 /**
- * A client component only so the action's error can be shown inline —
- * the same shape the login form uses. The server-rendered version threw
- * instead, which meant a typo in the email produced Next's full-page
- * runtime error and no way back to the form.
+ * A client component only so the action's error can be shown inline — the
+ * same shape the login form uses. The server-rendered version threw instead,
+ * which meant a typo in the email produced Next's full-page runtime error
+ * and no way back to the form.
  */
-export function ImpersonationForm() {
+export function ImpersonateForm() {
   const [state, formAction, pending] = useActionState(startImpersonationAction, undefined);
 
   return (
@@ -25,7 +25,7 @@ export function ImpersonationForm() {
         <Input name="email" type="email" autoComplete="off" placeholder="cs@client.com" icon="at-sign" />
       </Field>
       {state?.error && <p className="font-ui text-small text-danger">{state.error}</p>}
-      <Button full type="submit" variant="secondary" icon="user-plus" disabled={pending}>
+      <Button full type="submit" variant="secondary" icon="user" disabled={pending}>
         {pending ? "Starting…" : "Start impersonating"}
       </Button>
     </form>

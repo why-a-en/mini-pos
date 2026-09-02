@@ -4,6 +4,9 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { impersonationEvents, memberStores, members, organizations, sessions, users } from "@/db/schema";
 import { auth } from "./config";
+import { isPlatformAdmin } from "./platform-admins";
+
+export { isPlatformAdmin } from "./platform-admins";
 
 // The boundary between better-auth and the rest of the app. Feature code
 // imports from here — never from ./config — so swapping the auth library
@@ -19,14 +22,21 @@ import { auth } from "./config";
 // - AppRole "admin" — a *tenant* role. The reseller's own administrator:
 //   manages their staff, sees their reports. Scoped to one Organization
 //   like any member, with no power outside it.
-// - users.role / PLATFORM_ADMIN_USER_IDS — *platform* administration.
-//   That is us, the operator, and it is what gates impersonation.
+// - PLATFORM_ADMIN_USER_IDS — *platform* operators. Us. A platform operator
+//   has NO tenant footprint (no `members` row, no Organization) and lives
+//   only under `/platform`; `resolveSession()` returns a `SessionUser` XOR a
+//   `PlatformUser`, never both. They reach a client's data by impersonating.
 //
-// A tenant admin can never become a platform admin: the latter is an
-// environment allowlist with no in-app path to it.
+// A tenant user can never become a platform operator: the allowlist is the
+// single source of truth, with no in-app path to it, so a database
+// compromise can't grant it either.
 export type { AppRole } from "@/services/types";
 import type { AppRole } from "@/services/types";
 
+/**
+ * A signed-in **tenant** user — a member of an Organization, working in the
+ * app. The everyday session shape; `requireUser()` returns this.
+ */
 export type SessionUser = {
   id: string;
   name: string;
@@ -48,8 +58,30 @@ export type SessionUser = {
 };
 
 /**
- * Resolves the request to the signed-in user and their active Organization,
- * or null.
+ * A signed-in **platform operator** — us, the people who run SuSeeBook. A
+ * platform operator has NO tenant footprint: no `members` row, no
+ * Organization, no tenant role. They live only under `/platform`, and reach
+ * a client's data by impersonating (audited). The allowlist
+ * (PLATFORM_ADMIN_USER_IDS) is the single source of truth, so there is no
+ * in-app path to becoming one and a database compromise can't grant it.
+ *
+ * "Platform admin" and the tenant "Admin" role are two deliberately separate
+ * axes — see the note at the top of this file.
+ */
+export type PlatformUser = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+type ResolvedSession =
+  | { kind: "platform"; user: PlatformUser }
+  | { kind: "tenant"; user: SessionUser }
+  | null;
+
+/**
+ * The one place the session cookie is turned into "who is this and what are
+ * they". A caller is a platform operator XOR a tenant user, never both.
  *
  * The membership is read on each call rather than baked into the session, so
  * a role change or a suspension takes effect on the next request instead of
@@ -57,9 +89,22 @@ export type SessionUser = {
  * cookie cache still spares us the session and user lookups; what remains is
  * one indexed query on `members`.
  */
-export async function getCurrentUser(): Promise<SessionUser | null> {
+async function resolveSession(): Promise<ResolvedSession> {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
+
+  const impersonatedBy = session.session.impersonatedBy ?? null;
+
+  // A platform operator who is NOT impersonating is a platform session —
+  // full stop, no tenant lookup. While impersonating, `session.user` is the
+  // *target* tenant user, so that falls through to the tenant path below and
+  // resolves as a normal (banner-flagged) tenant session.
+  if (isPlatformAdmin(session.user.id) && !impersonatedBy) {
+    return {
+      kind: "platform",
+      user: { id: session.user.id, name: session.user.name, email: session.user.email },
+    };
+  }
 
   const organizationId = session.session.activeOrganizationId;
   // No active Organization means the session predates a membership, or the
@@ -98,15 +143,38 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (row.memberStatus !== "active") return null;
 
   return {
-    id: session.user.id,
-    name: session.user.name,
-    email: session.user.email,
-    organizationId,
-    storeId: await resolveActiveStoreId(row.memberId, row.sessionActiveStoreId),
-    role: row.role as AppRole,
-    impersonatedBy: session.session.impersonatedBy ?? null,
-    mustChangePassword: row.mustChangePassword,
+    kind: "tenant",
+    user: {
+      id: session.user.id,
+      name: session.user.name,
+      email: session.user.email,
+      organizationId,
+      storeId: await resolveActiveStoreId(row.memberId, row.sessionActiveStoreId),
+      role: row.role as AppRole,
+      impersonatedBy,
+      mustChangePassword: row.mustChangePassword,
+    },
   };
+}
+
+/**
+ * The signed-in tenant user, or null. Null also for a signed-in platform
+ * operator — from the tenant app's point of view they are not "a user".
+ */
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  const resolved = await resolveSession();
+  return resolved?.kind === "tenant" ? resolved.user : null;
+}
+
+/**
+ * Where a signed-in caller belongs — `/platform` for an operator, `/` for a
+ * tenant — or null when nobody is signed in. Used by `/login` to bounce an
+ * already-authenticated visitor to the right place.
+ */
+export async function signedInHome(): Promise<string | null> {
+  const resolved = await resolveSession();
+  if (!resolved) return null;
+  return resolved.kind === "platform" ? "/platform" : "/";
 }
 
 /**
@@ -139,11 +207,29 @@ async function resolveActiveStoreId(
   return grantedIds.length === 1 ? grantedIds[0] : null;
 }
 
-/** For Server Components/layouts that must be behind a session. */
+/**
+ * For tenant Server Components / layouts / actions. A platform operator who
+ * reaches a tenant route is bounced to `/platform` — the two surfaces don't
+ * overlap.
+ */
 export async function requireUser(): Promise<SessionUser> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  return user;
+  const resolved = await resolveSession();
+  if (!resolved) redirect("/login");
+  if (resolved.kind === "platform") redirect("/platform");
+  return resolved.user;
+}
+
+/**
+ * For the platform console (`/platform`) — screens and actions only we, the
+ * operator, may reach. A tenant user who reaches one is bounced to `/`.
+ * Gated on the PLATFORM_ADMIN_USER_IDS allowlist via resolveSession(); there
+ * is no in-app path to becoming a platform operator.
+ */
+export async function requirePlatformUser(): Promise<PlatformUser> {
+  const resolved = await resolveSession();
+  if (!resolved) redirect("/login");
+  if (resolved.kind === "tenant") redirect("/");
+  return resolved.user;
 }
 
 /**
@@ -291,22 +377,13 @@ export async function setActiveStore(storeId: string): Promise<void> {
 // and a banner (see ImpersonationBanner) so nobody mistakes a client's
 // account for their own.
 
-/** Allowlist, not a database column — there is no in-app path to becoming one. */
-export function isPlatformAdmin(userId: string): boolean {
-  return (process.env.PLATFORM_ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .includes(userId);
-}
 
 /**
  * Starts acting as `email`'s user. Writes the audit row *after* the session
  * swap succeeds, so a failed impersonation doesn't leave a phantom record.
  */
 export async function startImpersonation(email: string): Promise<void> {
-  const actor = await requireUser();
-  if (!isPlatformAdmin(actor.id)) throw new Error("Not permitted.");
+  const actor = await requirePlatformUser();
 
   const [target] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!target) throw new Error(`No user with email ${email}.`);

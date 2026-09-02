@@ -113,9 +113,20 @@ is what will eventually tell us what a signup flow should actually do.
 
 ## Deferred, deliberately
 
-Billing and plans, usage limits, self-serve signup, custom domains, a
-platform-admin console, per-tenant audit logs, SSO, invitations and password
-reset. None constrains the schema, so postponing them costs nothing.
+Billing and plans, usage limits, self-serve signup, custom domains,
+per-tenant audit logs, SSO, invitations and password reset. None constrains
+the schema, so postponing them costs nothing.
+
+> **Update (`feat/platform-console`):** the first slice of the deferred
+> "platform-admin console" now exists as a **separate surface** — `/platform`,
+> its own layout and routes, no tenant chrome. A platform operator has **no
+> tenant footprint** (no `members` row, no Organization); `resolveSession()`
+> in `src/lib/auth` returns a `SessionUser` XOR a `PlatformUser`, and the two
+> route trees redirect each other's users away. The operator provisions
+> client Organizations + their first Admin (the in-app `pnpm org:create`),
+> suspends them via `organizations.status`, and steps into one by
+> impersonating. `PLATFORM_ADMIN_USER_IDS` stays the single source of truth.
+> Still deferred: billing, usage, and any *tenant-facing* onboarding.
 
 Two known gaps are recorded rather than fixed:
 
