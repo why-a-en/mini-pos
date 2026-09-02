@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { Icon } from "@/components/icon";
 import type { PlatformUserRow } from "@/services/platform";
-import { impersonateAction } from "./actions";
+import { impersonateAction } from "../actions";
 
 const ROLE_LABELS = {
   admin: "Admin",

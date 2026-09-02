@@ -1,7 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useActionState, useState } from "react";
 import { Screen, ScrollBody } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -19,7 +18,7 @@ import {
 } from "@/components/ui/sheet";
 import { Icon } from "@/components/icon";
 import type { OrganizationSummary } from "@/services/platform";
-import { createOrganizationAction, setOrganizationStatusAction } from "./actions";
+import { createOrganizationAction } from "./actions";
 
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString("en-GB", {
@@ -35,7 +34,6 @@ export function OrganizationsView({
   organizations: OrganizationSummary[];
 }) {
   const [creating, setCreating] = useState(false);
-  const [selected, setSelected] = useState<OrganizationSummary | null>(null);
 
   return (
     <Screen>
@@ -51,7 +49,7 @@ export function OrganizationsView({
           />
         ) : (
           organizations.map((org) => (
-            <Row key={org.id} onClick={() => setSelected(org)}>
+            <Row key={org.id} href={`/platform/organizations/${org.id}`}>
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{org.name}</span>
                 <span className="truncate font-ui text-small text-text-faint">
@@ -76,7 +74,6 @@ export function OrganizationsView({
       </ScrollBody>
 
       <NewOrgSheet open={creating} onOpenChange={setCreating} />
-      <ManageOrgSheet organization={selected} onClose={() => setSelected(null)} />
     </Screen>
   );
 }
@@ -153,61 +150,5 @@ function NewOrgForm({ onDone }: { onDone: () => void }) {
         </SheetFooter>
       </form>
     </>
-  );
-}
-
-function ManageOrgSheet({
-  organization,
-  onClose,
-}: {
-  organization: OrganizationSummary | null;
-  onClose: () => void;
-}) {
-  const [pending, startTransition] = useTransition();
-
-  return (
-    <Sheet open={organization !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent>
-        {organization && (
-          <>
-            <SheetHeader title={organization.name} />
-            <SheetBody className="grid gap-4">
-              <p className="font-ui text-small text-text-faint">
-                <code className="font-mono text-code">{organization.slug}</code> ·{" "}
-                {organization.memberCount} member{organization.memberCount === 1 ? "" : "s"} ·
-                created {formatDate(organization.createdAt)}
-              </p>
-
-              {/* Suspension is the only lever over a client account
-                  (ADR-0002 §8) — a suspended Organization resolves to no
-                  session for every one of its members on their next
-                  request. */}
-              <Button
-                full
-                variant={organization.status === "suspended" ? "secondary" : "danger"}
-                disabled={pending}
-                onClick={() =>
-                  startTransition(async () => {
-                    const result = await setOrganizationStatusAction(
-                      organization.id,
-                      organization.status === "suspended" ? "active" : "suspended",
-                    );
-                    if (result.error) {
-                      toast.error(result.error);
-                      return;
-                    }
-                    onClose();
-                  })
-                }
-              >
-                {organization.status === "suspended"
-                  ? "Restore organization"
-                  : "Suspend organization"}
-              </Button>
-            </SheetBody>
-          </>
-        )}
-      </SheetContent>
-    </Sheet>
   );
 }

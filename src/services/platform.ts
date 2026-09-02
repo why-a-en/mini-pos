@@ -46,6 +46,59 @@ export async function listOrganizations(): Promise<OrganizationSummary[]> {
   return rows;
 }
 
+export type OrganizationDetail = {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "suspended";
+  createdAt: Date;
+  members: {
+    userId: string;
+    name: string;
+    email: string;
+    role: AppRole;
+    status: "active" | "suspended";
+    joinedAt: Date;
+  }[];
+};
+
+/** One Organization and everyone in it. Null for an unknown id. */
+export async function getOrganizationDetail(
+  organizationId: string,
+): Promise<OrganizationDetail | null> {
+  const [org] = await db
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      slug: organizations.slug,
+      status: organizations.status,
+      createdAt: organizations.createdAt,
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  if (!org) return null;
+
+  const rows = await db
+    .select({
+      userId: users.id,
+      name: users.name,
+      email: users.email,
+      role: members.role,
+      status: members.status,
+      joinedAt: members.createdAt,
+    })
+    .from(members)
+    .innerJoin(users, eq(users.id, members.userId))
+    .where(eq(members.organizationId, organizationId))
+    .orderBy(members.createdAt);
+
+  return {
+    ...org,
+    members: rows.map((r) => ({ ...r, role: r.role as AppRole })),
+  };
+}
+
 export type PlatformMetrics = {
   organizations: { total: number; suspended: number };
   users: number;
