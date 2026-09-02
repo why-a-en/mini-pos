@@ -16,8 +16,19 @@ import { hashPassword, verifyPassword } from "./hash";
 // withCurrentOrganization() instead — that indirection is what keeps a
 // future swap (to Cognito, or anything else) a two-file change rather than
 // a rewrite. See ARCHITECTURE_ROADMAP.md §1.
+// Explicit BETTER_AUTH_URL wins; on Vercel fall back to the stable
+// production domain, then the per-deployment URL, so a deploy works without
+// hardcoding anything. (This app never mounts better-auth's HTTP handler —
+// see the note in src/lib/auth — so baseURL only matters for the library's
+// own internal URL building, not for browser CSRF/redirects.)
+function resolveBaseURL(): string {
+  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  return host ? `https://${host}` : "http://localhost:3000";
+}
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  baseURL: resolveBaseURL(),
   secret: process.env.BETTER_AUTH_SECRET,
 
   // usePlural covers every table name at once — our schema exports `users`,
