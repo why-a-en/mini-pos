@@ -1,9 +1,10 @@
-import { count, desc, eq } from "drizzle-orm";
+import { count, desc, eq, gte } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, members, organizations, users } from "@/db/schema";
+import { isPlatformAdmin } from "@/lib/auth/platform-admins";
 import { hashPassword } from "@/lib/auth/hash";
 import { generateTemporaryPassword } from "./password";
-import { ServiceError } from "./types";
+import { ServiceError, type AppRole } from "./types";
 
 // The platform console — provisioning and suspending client Organizations.
 // This is *us*, the operator, not a tenant Admin, so unlike every other
@@ -43,6 +44,127 @@ export async function listOrganizations(): Promise<OrganizationSummary[]> {
     .orderBy(desc(organizations.createdAt));
 
   return rows;
+}
+
+export type PlatformMetrics = {
+  organizations: { total: number; suspended: number };
+  users: number;
+  members: { active: number; byRole: Record<AppRole, number> };
+  newLast7Days: { organizations: number; users: number };
+};
+
+/**
+ * A glance at the whole platform. Every count is on an RLS-exempt table
+ * (organizations / users / members) — no per-tenant fan-out, no owner
+ * connection. Cross-tenant order/store volume is deliberately not here: it
+ * would need one or the other, and neither is worth it for a headline
+ * number yet.
+ */
+export async function platformMetrics(): Promise<PlatformMetrics> {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const [orgTotal] = await db.select({ n: count() }).from(organizations);
+  const [orgSuspended] = await db
+    .select({ n: count() })
+    .from(organizations)
+    .where(eq(organizations.status, "suspended"));
+  const [orgNew] = await db
+    .select({ n: count() })
+    .from(organizations)
+    .where(gte(organizations.createdAt, since));
+
+  const [userTotal] = await db.select({ n: count() }).from(users);
+  const [userNew] = await db.select({ n: count() }).from(users).where(gte(users.createdAt, since));
+
+  const [memberTotal] = await db
+    .select({ n: count() })
+    .from(members)
+    .where(eq(members.status, "active"));
+  const roleRows = await db
+    .select({ role: members.role, n: count() })
+    .from(members)
+    .where(eq(members.status, "active"))
+    .groupBy(members.role);
+
+  const byRole: Record<AppRole, number> = { admin: 0, support_agent: 0, supplier: 0 };
+  for (const r of roleRows) {
+    if (r.role === "admin" || r.role === "support_agent" || r.role === "supplier") {
+      byRole[r.role] = r.n;
+    }
+  }
+
+  return {
+    organizations: { total: orgTotal.n, suspended: orgSuspended.n },
+    users: userTotal.n,
+    members: { active: memberTotal.n, byRole },
+    newLast7Days: { organizations: orgNew.n, users: userNew.n },
+  };
+}
+
+export type PlatformUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+  /** True for a platform operator — they have no memberships and never touch the tenant app. */
+  isOperator: boolean;
+  memberships: {
+    orgName: string;
+    orgSlug: string;
+    orgStatus: "active" | "suspended";
+    role: AppRole;
+    memberStatus: "active" | "suspended";
+  }[];
+};
+
+/**
+ * Every person on the platform, with the Organizations they belong to.
+ * No pagination yet — an operator tool at this volume. All from RLS-exempt
+ * tables.
+ */
+export async function listUsers(): Promise<PlatformUserRow[]> {
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      createdAt: users.createdAt,
+      orgName: organizations.name,
+      orgSlug: organizations.slug,
+      orgStatus: organizations.status,
+      role: members.role,
+      memberStatus: members.status,
+    })
+    .from(users)
+    .leftJoin(members, eq(members.userId, users.id))
+    .leftJoin(organizations, eq(organizations.id, members.organizationId))
+    .orderBy(desc(users.createdAt));
+
+  const byUser = new Map<string, PlatformUserRow>();
+  for (const r of rows) {
+    let u = byUser.get(r.id);
+    if (!u) {
+      u = {
+        id: r.id,
+        name: r.name,
+        email: r.email,
+        createdAt: r.createdAt,
+        isOperator: isPlatformAdmin(r.id),
+        memberships: [],
+      };
+      byUser.set(r.id, u);
+    }
+    if (r.orgName && r.orgSlug && r.orgStatus && r.role && r.memberStatus) {
+      u.memberships.push({
+        orgName: r.orgName,
+        orgSlug: r.orgSlug,
+        orgStatus: r.orgStatus,
+        role: r.role as AppRole,
+        memberStatus: r.memberStatus,
+      });
+    }
+  }
+  return [...byUser.values()];
 }
 
 function slugify(name: string): string {

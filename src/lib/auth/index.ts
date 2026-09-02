@@ -4,6 +4,9 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { impersonationEvents, memberStores, members, organizations, sessions, users } from "@/db/schema";
 import { auth } from "./config";
+import { isPlatformAdmin } from "./platform-admins";
+
+export { isPlatformAdmin } from "./platform-admins";
 
 // The boundary between better-auth and the rest of the app. Feature code
 // imports from here — never from ./config — so swapping the auth library
@@ -374,14 +377,6 @@ export async function setActiveStore(storeId: string): Promise<void> {
 // and a banner (see ImpersonationBanner) so nobody mistakes a client's
 // account for their own.
 
-/** Allowlist, not a database column — there is no in-app path to becoming one. */
-export function isPlatformAdmin(userId: string): boolean {
-  return (process.env.PLATFORM_ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .includes(userId);
-}
 
 /**
  * Starts acting as `email`'s user. Writes the audit row *after* the session
