@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Screen, ScrollBody } from "@/components/ui/screen";
+import { Screen, ScrollBody, Toolbar } from "@/components/ui/screen";
 import { TopBar } from "@/components/ui/top-bar";
 import { SectionHeader } from "@/components/ui/section-header";
+import { SearchField } from "@/components/ui/search-field";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Row } from "@/components/ui/row";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Sheet,
   SheetContent,
@@ -16,6 +19,7 @@ import {
 } from "@/components/ui/sheet";
 import { Icon } from "@/components/icon";
 import type { PlatformUserRow } from "@/services/platform";
+import type { AppRole } from "@/services/types";
 import { impersonateAction } from "../actions";
 
 const ROLE_LABELS = {
@@ -23,6 +27,15 @@ const ROLE_LABELS = {
   support_agent: "Support",
   supplier: "Supplier",
 } as const;
+
+type RoleFilter = "all" | AppRole;
+
+const ROLE_SEGMENTS: { value: RoleFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "admin", label: "Admins" },
+  { value: "support_agent", label: "Support" },
+  { value: "supplier", label: "Suppliers" },
+];
 
 function membershipLine(user: PlatformUserRow): string {
   if (user.isOperator) return "Platform operator";
@@ -32,33 +45,63 @@ function membershipLine(user: PlatformUserRow): string {
 
 export function UsersView({ users }: { users: PlatformUserRow[] }) {
   const [selected, setSelected] = useState<PlatformUserRow | null>(null);
+  const [query, setQuery] = useState("");
+  const [role, setRole] = useState<RoleFilter>("all");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return users.filter((user) => {
+      if (q && !`${user.name} ${user.email}`.toLowerCase().includes(q)) return false;
+      if (role !== "all" && !user.memberships.some((m) => m.role === role)) return false;
+      return true;
+    });
+  }, [users, query, role]);
+
+  const filtering = query.trim() !== "" || role !== "all";
 
   return (
     <Screen>
       <TopBar backHref="/platform" title="Users" eyebrow="Operator" />
+      <Toolbar className="pb-2">
+        <SearchField
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onClear={() => setQuery("")}
+          placeholder="Search name or email"
+        />
+      </Toolbar>
+      <Toolbar className="pt-0">
+        <SegmentedControl options={ROLE_SEGMENTS} value={role} onChange={setRole} />
+      </Toolbar>
       <ScrollBody>
-        <SectionHeader right={`${users.length}`}>Everyone</SectionHeader>
+        <SectionHeader right={filtering ? `${filtered.length} of ${users.length}` : `${users.length}`}>
+          {filtering ? "Matching" : "Everyone"}
+        </SectionHeader>
 
-        {users.map((user) => (
-          <Row key={user.id} onClick={() => setSelected(user)}>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate">
-                {user.name}
-                {user.isOperator && <span className="text-text-faint"> · operator</span>}
-              </span>
-              <span className="truncate font-ui text-small text-text-faint">{user.email}</span>
-              <span className="truncate font-ui text-small text-text-faint">
-                {membershipLine(user)}
-              </span>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              {user.memberships.some((m) => m.memberStatus === "suspended") && (
-                <span className="font-ui text-small text-danger">Suspended</span>
-              )}
-              <Icon name="chevron-right" size={16} className="text-text-faint" />
-            </div>
-          </Row>
-        ))}
+        {filtered.length === 0 ? (
+          <EmptyState icon="search" title="No matching users." body="Try a different search or filter." />
+        ) : (
+          filtered.map((user) => (
+            <Row key={user.id} onClick={() => setSelected(user)}>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">
+                  {user.name}
+                  {user.isOperator && <span className="text-text-faint"> · operator</span>}
+                </span>
+                <span className="truncate font-ui text-small text-text-faint">{user.email}</span>
+                <span className="truncate font-ui text-small text-text-faint">
+                  {membershipLine(user)}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {user.memberships.some((m) => m.memberStatus === "suspended") && (
+                  <span className="font-ui text-small text-danger">Suspended</span>
+                )}
+                <Icon name="chevron-right" size={16} className="text-text-faint" />
+              </div>
+            </Row>
+          ))
+        )}
       </ScrollBody>
 
       <UserSheet user={selected} onClose={() => setSelected(null)} />
